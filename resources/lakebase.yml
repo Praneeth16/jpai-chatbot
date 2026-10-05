@@ -1,0 +1,18 @@
+resources:
+  postgres_projects:
+    lakebase_project:
+      project_id: ${var.lakebase_project_id}
+      display_name: ${var.prefix} chatbot
+      pg_version: 17
+      enable_pg_native_login: false
+      history_retention_duration: 604800s
+      purge_on_delete: false
+      default_endpoint_settings:
+        autoscaling_limit_min_cu: 0.5
+        autoscaling_limit_max_cu: 2
+        suspend_timeout_duration: 3600s
+
+# A new project already contains branch `production` and database `databricks-postgres` (Postgres name
+# databricks_postgres). The UC catalog ${var.lakebase_catalog} that holds the synced tables is created by bootstrap_job,
+# not here: registering a catalog needs the CREATE CATALOG privilege, which many deployers do not have, and a failing
+# bundle deploy would block everything else. bootstrap_job reuses an existing catalog of that name.

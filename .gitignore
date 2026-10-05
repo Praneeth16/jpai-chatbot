@@ -1,0 +1,14 @@
+node_modules/
+dist/
+client/dist/
+.databricks/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.DS_Store
+.impeccable/
+client/dist/

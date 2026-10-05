@@ -1,0 +1,30 @@
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+import path from 'node:path';
+import pkg from '../package.json';
+
+// https://vite.dev/config/
+export default defineConfig({
+  root: __dirname,
+  plugins: [react(), tailwindcss()],
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
+  server: {
+    middlewareMode: true,
+  },
+  build: {
+    outDir: path.resolve(__dirname, './dist'),
+    emptyOutDir: true,
+    sourcemap: process.env.NODE_ENV === 'development',
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react/jsx-dev-runtime', 'react/jsx-runtime'],
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+});

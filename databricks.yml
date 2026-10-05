@@ -1,0 +1,63 @@
+bundle:
+  name: jpai-chatbot
+
+include:
+  - resources/*.yml
+
+variables:
+  prefix:
+    description: Short name used for every resource (lowercase, hyphens). Change it to install a second copy.
+    default: jpai
+  catalog:
+    description: Existing Unity Catalog catalog where the schema is created.
+  schema:
+    description: Schema created by this bundle for all tables, volumes and the AI Search index.
+    default: jpai_chatbot
+  warehouse_id:
+    description: Serverless SQL warehouse used by the app (ops queries) and jobs.
+  lakebase_project_id:
+    description: Lakebase Autoscaling project id created by this bundle.
+    default: jpai-chatbot
+  lakebase_catalog:
+    description: UC catalog that holds the Lakebase synced tables. A standard catalog works (no CREATE CATALOG needed).
+  synced_schema:
+    description: Schema (in UC and in Postgres) of the synced tables. Must differ from `schema`.
+    default: jpai_chatbot_ref
+  ai_search_endpoint:
+    description: AI Search endpoint created by this bundle.
+    default: jpai-chatbot-search
+  classifier_model_service:
+    description: Unity Gateway model service used by the System One API for routing.
+    default: system.ai.openjev-qwen35-4b
+  embedding_endpoint:
+    description: Embedding endpoint used by the AI Search Delta Sync index.
+    default: databricks-qwen3-embedding-0-6b
+  judge_endpoint:
+    description: LLM judge used only by the evaluation job.
+    default: databricks-claude-opus-5-5
+  admin_emails:
+    description: Comma-separated emails allowed to upload documents and see raw ops data and the debug panel.
+    default: ${workspace.current_user.userName}
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://fevm-serverless-lakebase-praneeth.cloud.databricks.com
+    variables:
+      catalog: serverless_lakebase_praneeth_catalog
+      lakebase_catalog: serverless_lakebase_praneeth_catalog
+      warehouse_id: 4d39ac2e32b72a3a
+
+  portable:
+    workspace:
+      host: https://fevm-serverless-lakebase-praneeth.cloud.databricks.com
+    variables:
+      prefix: jpai-pt
+      catalog: serverless_lakebase_praneeth_catalog
+      schema: jpai_chatbot_pt
+      warehouse_id: 4d39ac2e32b72a3a
+      lakebase_project_id: jpai-chatbot-pt
+      lakebase_catalog: serverless_lakebase_praneeth_catalog
+      synced_schema: jpai_chatbot_pt_ref
+      ai_search_endpoint: jpai-chatbot-search-pt

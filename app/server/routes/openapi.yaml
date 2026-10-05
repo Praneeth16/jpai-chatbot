@@ -1,0 +1,733 @@
+openapi: 3.0.3
+info:
+  title: JPAI chatbot router API
+  version: 1.3.0
+  description: |
+    Router backend for the AstraZeneca Japan HCP website chatbot. This is the contract the AWS ECS controller calls.
+
+    Callers outside the Databricks App use an OAuth M2M token (Authorization: Bearer) of a service principal that has
+    CAN_USE on the app. Browser users are authenticated by the Databricks Apps proxy.
+
+    The router never generates text. `response.header_text` is an approved template and `response.section_text` is the
+    verbatim text of an interview form (IF) section (which may contain HTML tables); `response.text` is both joined
+    for compatibility. Routing rules are in docs/CONTRACTS.md sections 6 and 8.
+
+    Access: `POST /api/v1/docs/upload` needs an admin (`ADMIN_EMAILS`, otherwise 403), and `GET /api/v1/ops/summary`
+    only returns raw user messages to admins.
+servers:
+  - url: https://{app_host}
+    variables:
+      app_host:
+        default: jpai-chatbot-0000000000000000.aws.databricksapps.com
+security:
+  - bearer: []
+paths:
+  /api/v1/route:
+    post:
+      operationId: route
+      summary: Route one chatbot turn
+      description: |
+        Stateful per `conversation_id`: the server keeps the pending clarification, the off-topic streak and the last
+        product between calls, so the caller only sends the new message. An empty or whitespace-only message is valid
+        and returns route `0a` without calling the classifier. If a dependency fails (classifier, search index,
+        Lakebase lookups) the turn degrades to route `2` (see `retrieval.error`) instead of returning an error.
+
+        Adverse events: when the classifier is unavailable the message is still written to the AE queue with status
+        `UNCLASSIFIED` (`ae_logged` true, route per flow). If the AE queue cannot be written after 3 attempts the turn
+        returns route `1` with `ae_logged` false.
+
+        The conversation state is bound to the calling user: a `conversation_id` used earlier by another user starts
+        a fresh conversation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteRequest'
+            examples:
+              question:
+                value:
+                  conversation_id: 3f6c2a0e-9d1b-4a57-8f0e-2b7f1d6c9a11
+                  message: イジュドの用法用量を教えてください
+                  lang: ja
+                  audience: HCP
+              clarification_reply:
+                summary: Reply to a route 5.2 question; the server merges it with the earlier question
+                value:
+                  conversation_id: 3f6c2a0e-9d1b-4a57-8f0e-2b7f1d6c9a11
+                  message: HIMALAYA
+                  lang: ja
+                  audience: HCP
+      responses:
+        '200':
+          description: Routing result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/v1/sections/{section_id}:
+    get:
+      operationId: getSection
+      summary: One interview form section, verbatim (for "show full parent section")
+      description: |
+        Applies the same rules as the router: never a chapter (level below 2) or FRONT, only current sections that are
+        not REJECTED, and an approved section is refused (403) when it contains an unapproved sub-section. Unapproved
+        sections (clinical results) are returned with `header_text` set to the route 5.1 wording.
+      parameters:
+        - name: section_id
+          in: path
+          required: true
+          description: if_sections.section_id, for example `JD0300_IF::Ⅴ.5.(4)` (URL-encode it)
+          schema:
+            type: string
+        - name: lang
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ja, en]
+            default: ja
+      responses:
+        '200':
+          description: The section
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SectionResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServerError'
+  /api/v1/docs:
+    get:
+      operationId: listDocs
+      summary: Interview forms known to the system
+      description: docs_registry joined with section and chunk counts (SQL warehouse). Falls back to the Lakebase synced sections.
+      responses:
+        '200':
+          description: Documents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocsResponse'
+  /api/v1/docs/upload:
+    post:
+      operationId: uploadDoc
+      summary: Upload an interview form PDF and start ingestion (admins only)
+      description: Caller must be listed in `ADMIN_EMAILS`. The file name extension is lower-cased (`.PDF` becomes `.pdf`).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF, max 100 MB
+      responses:
+        '201':
+          description: Stored in the docs volume. `run_id` identifies the ingest job run (null when it could not be started, see `warning`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/ServerError'
+  /api/v1/docs/{doc_id}/pages/{page}:
+    get:
+      operationId: getPageImage
+      summary: Rendered image of one PDF page (for citations)
+      parameters:
+        - name: doc_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: path
+          required: true
+          description: 1-based PDF page
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Page image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/ops/summary:
+    get:
+      operationId: opsSummary
+      summary: Route mix, AE queue and recent turns
+      description: Non-admins get the counts only; `recent_turns` (raw user messages) is empty for them.
+      responses:
+        '200':
+          description: Last 7 days
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpsSummary'
+  /api/v1/health:
+    get:
+      operationId: health
+      summary: Liveness and dependency configuration
+      responses:
+        '200':
+          description: Lakebase reachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: Lakebase unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /api/me:
+    get:
+      operationId: me
+      summary: Identity from the Databricks Apps proxy header x-forwarded-email
+      responses:
+        '200':
+          description: Caller
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [email, is_admin]
+                properties:
+                  email:
+                    type: string
+                    nullable: true
+                  is_admin:
+                    type: boolean
+                    description: Listed in ADMIN_EMAILS (upload, raw ops messages, "Why this route?" panel)
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: Databricks OAuth token (user, or service principal via M2M)
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or invalid token
+    Forbidden:
+      description: The caller is not allowed to do this
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ServerError:
+      description: Unexpected failure
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        details: {}
+    RouteId:
+      type: string
+      enum:
+        [
+          '0a',
+          '0b',
+          '0c_greeting',
+          '0c_closing',
+          '0c_about',
+          '1',
+          '2',
+          '3.1',
+          '3.2',
+          '4.1',
+          '4.2',
+          '5.1',
+          '5.2',
+          '6.1',
+          '6.2',
+          '7.1',
+          '8.1',
+          '8.2',
+        ]
+      description: |
+        0a invalid input, 0b prompt injection, 0c_* small talk, 1 adverse event or report AE, 2 cannot answer (contact
+        Medical Information), 3.1 patient materials, 3.2 HCP materials, 4.1 IF subsection, 4.2 IF section, 5.1 clinical
+        study section, 5.2 asks which study, 6.1 website, 6.2 contact AZ, 7.1 asks which product, 8.1 and 8.2 off topic.
+    RouteRequest:
+      type: object
+      required: [conversation_id, message]
+      properties:
+        conversation_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Client generated uuid, stable for the conversation
+        message:
+          type: string
+          maxLength: 4000
+          description: May be empty (returns route 0a)
+        lang:
+          type: string
+          enum: [ja, en]
+          default: ja
+        audience:
+          type: string
+          enum: [HCP]
+          default: HCP
+    RouteResponse:
+      type: object
+      required:
+        [
+          turn_id,
+          route_id,
+          response,
+          classification,
+          retrieval,
+          pending_clarification,
+          merged_message,
+          ae_logged,
+          trace_id,
+          latency_ms,
+        ]
+      properties:
+        turn_id:
+          type: string
+          format: uuid
+        route_id:
+          $ref: '#/components/schemas/RouteId'
+        response:
+          type: object
+          required:
+            [template_id, template_status, text, header_text, section_text, section_context, section_ids, citations]
+          properties:
+            template_id:
+              type: string
+              nullable: true
+              description: Template used as the whole text, or as the header above a section (for example T_4X_HEADER)
+            template_status:
+              type: string
+              nullable: true
+              enum: [APPROVED, PLACEHOLDER, FALLBACK]
+              description: |
+                Status of the template row as stored. FALLBACK means the built-in wording was used because the synced
+                templates table was unavailable or had no row; show it as provisional.
+            text:
+              type: string
+              description: |
+                `header_text`, or `header_text` + two newlines + `section_text`. Kept for compatibility; prefer the
+                separate fields.
+            header_text:
+              type: string
+              description: Template wording only
+            section_text:
+              type: string
+              nullable: true
+              description: Verbatim if_sections.markdown (may contain HTML tables). Null when the route answers with a template only.
+            section_context:
+              nullable: true
+              description: Where the section sits in the IF. Null when there is no section.
+              allOf:
+                - $ref: '#/components/schemas/SectionContext'
+            section_ids:
+              type: array
+              items:
+                type: string
+            citations:
+              type: array
+              items:
+                $ref: '#/components/schemas/Citation'
+        classification:
+          nullable: true
+          description: Null for route 0a (the classifier is not called)
+          allOf:
+            - $ref: '#/components/schemas/Classification'
+        retrieval:
+          nullable: true
+          description: Null when no search was needed
+          allOf:
+            - $ref: '#/components/schemas/Retrieval'
+        pending_clarification:
+          type: string
+          enum: [target_study, product_focus]
+          nullable: true
+        merged_message:
+          type: string
+          description: The text that was classified (pending question + reply when a clarification was pending)
+        ae_logged:
+          type: boolean
+          description: |
+            True when a row was written to the AE queue (status NEW for a classified event, UNCLASSIFIED when the
+            classifier was unavailable). False with route 1 means the queue write failed after 3 attempts.
+        trace_id:
+          type: string
+          nullable: true
+          description: MLflow trace id
+        latency_ms:
+          type: integer
+    Citation:
+      type: object
+      required: [doc_id, file_name, doc_rev, section_path, title, pages]
+      properties:
+        doc_id:
+          type: string
+        file_name:
+          type: string
+        doc_rev:
+          type: string
+          example: 2024年11月改訂（第3版）
+        section_path:
+          type: string
+          example: Ⅴ.5.(4)
+        title:
+          type: string
+        pages:
+          type: array
+          items:
+            type: integer
+          description: 1-based PDF pages
+    SectionContext:
+      type: object
+      required: [breadcrumb, part, parent_section_id]
+      properties:
+        breadcrumb:
+          type: array
+          items:
+            type: string
+          description: Titles of the ancestor sections, outermost first
+        part:
+          type: string
+          nullable: true
+          example: 2/3
+          description: '"k/n" when the section is one part of a long section that was split, otherwise null'
+        parent_section_id:
+          type: string
+          nullable: true
+          description: Parent section (level 2 or deeper) that GET /api/v1/sections/{section_id} returns in full
+    SectionResponse:
+      type: object
+      required:
+        [
+          section_id,
+          doc_id,
+          doc_rev,
+          section_path,
+          title,
+          section_text,
+          header_text,
+          approved_flag,
+          section_context,
+          citation,
+        ]
+      properties:
+        section_id:
+          type: string
+        doc_id:
+          type: string
+        doc_rev:
+          type: string
+        section_path:
+          type: string
+        title:
+          type: string
+        section_text:
+          type: string
+          description: Verbatim if_sections.markdown
+        header_text:
+          type: string
+          nullable: true
+          description: Route 5.1 wording, only for sections that are not approved
+        approved_flag:
+          type: boolean
+        section_context:
+          $ref: '#/components/schemas/SectionContext'
+        citation:
+          $ref: '#/components/schemas/Citation'
+    Thresholds:
+      type: object
+      description: Thresholds in force for the turn (defaults plus the ROUTER_CONFIG overrides)
+      required: [ae, injection, has_request, intent, conditions, retrieval]
+      properties:
+        ae:
+          type: number
+          example: 0.35
+        injection:
+          type: number
+          example: 0.6
+        has_request:
+          type: number
+          example: 0.3
+        intent:
+          type: number
+          example: 0.55
+        conditions:
+          type: number
+          example: 0.5
+        retrieval:
+          type: number
+          example: 0
+    Classification:
+      type: object
+      required:
+        [
+          adverse_event,
+          injection,
+          has_request,
+          has_conditions,
+          smalltalk,
+          intent,
+          product_code,
+          study_ids,
+          model,
+          degraded,
+          thresholds,
+        ]
+      properties:
+        adverse_event:
+          type: number
+        injection:
+          type: number
+        has_request:
+          type: number
+        has_conditions:
+          type: number
+        smalltalk:
+          type: object
+          properties:
+            choice:
+              type: string
+              enum: [greeting, closing, about_bot, other]
+            confidence:
+              type: number
+        intent:
+          type: object
+          properties:
+            choice:
+              type: string
+              enum:
+                [
+                  unanswerable,
+                  patient_materials,
+                  hcp_materials,
+                  drug_info,
+                  efficacy_safety,
+                  website,
+                  contact_az,
+                  ambiguous_az,
+                  report_ae,
+                  out_of_scope,
+                ]
+            confidence:
+              type: number
+            probabilities:
+              type: object
+              additionalProperties:
+                type: number
+        product_code:
+          type: string
+          nullable: true
+          description: From the master data match (not the model)
+        study_ids:
+          type: array
+          items:
+            type: string
+        model:
+          type: string
+          nullable: true
+          description: Model id that answered, for example system.ai.openjev-qwen35-4b
+        degraded:
+          type: boolean
+          description: True when the classifier failed and the safe default (route 2) was used. The message is then queued as an UNCLASSIFIED adverse event candidate.
+        thresholds:
+          $ref: '#/components/schemas/Thresholds'
+    Retrieval:
+      type: object
+      required: [query, filters, top_score, hits]
+      properties:
+        query:
+          type: string
+        filters:
+          type: object
+          additionalProperties: true
+        top_score:
+          type: number
+          nullable: true
+        hits:
+          type: array
+          items:
+            type: object
+            properties:
+              section_id:
+                type: string
+              score:
+                type: number
+        error:
+          type: string
+          description: Present when the search call failed
+    DocInfo:
+      type: object
+      properties:
+        doc_id:
+          type: string
+        file_name:
+          type: string
+        product_code:
+          type: string
+          nullable: true
+        doc_type:
+          type: string
+          nullable: true
+        doc_rev:
+          type: string
+          nullable: true
+        revision_date:
+          type: string
+          nullable: true
+        ingested_at:
+          type: string
+          nullable: true
+        is_current:
+          type: boolean
+        section_count:
+          type: integer
+        chunk_count:
+          type: integer
+    DocsResponse:
+      type: object
+      properties:
+        docs:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocInfo'
+        source:
+          type: string
+          enum: [uc, lakebase]
+    UploadResponse:
+      type: object
+      required: [file_name, volume_path, run_id]
+      properties:
+        file_name:
+          type: string
+        volume_path:
+          type: string
+        run_id:
+          type: integer
+          nullable: true
+        warning:
+          type: string
+    OpsSummary:
+      type: object
+      properties:
+        is_admin:
+          type: boolean
+          description: False means recent_turns was left empty
+        window_days:
+          type: integer
+        total_turns:
+          type: integer
+        avg_latency_ms:
+          type: integer
+          nullable: true
+        route_counts:
+          type: array
+          items:
+            type: object
+            properties:
+              route_id:
+                type: string
+              count:
+                type: integer
+        ae_queue:
+          type: array
+          items:
+            type: object
+            properties:
+              status:
+                type: string
+              count:
+                type: integer
+        recent_turns:
+          type: array
+          items:
+            type: object
+            properties:
+              turn_id:
+                type: string
+              conversation_id:
+                type: string
+              message:
+                type: string
+              route_id:
+                type: string
+              template_id:
+                type: string
+                nullable: true
+              latency_ms:
+                type: integer
+                nullable: true
+              trace_id:
+                type: string
+                nullable: true
+              created_at:
+                type: string
+                format: date-time
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        version:
+          type: string
+        checks:
+          type: object
+          properties:
+            lakebase:
+              type: boolean
+            classifier_configured:
+              type: boolean
+            search_configured:
+              type: boolean
+            tracing:
+              type: boolean

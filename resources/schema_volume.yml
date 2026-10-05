@@ -1,0 +1,21 @@
+resources:
+  schemas:
+    chatbot_schema:
+      catalog_name: ${var.catalog}
+      name: ${var.schema}
+      comment: JPAI chatbot - interview form sections, chunks, master data, templates and evaluation results.
+
+  volumes:
+    docs:
+      catalog_name: ${var.catalog}
+      schema_name: ${resources.schemas.chatbot_schema.name}
+      name: docs
+      volume_type: MANAGED
+      comment: Source interview form PDFs (watched by the ingestion pipeline).
+
+    page_images:
+      catalog_name: ${var.catalog}
+      schema_name: ${resources.schemas.chatbot_schema.name}
+      name: page_images
+      volume_type: MANAGED
+      comment: Page images rendered by ai_parse_document (used to show the source page).

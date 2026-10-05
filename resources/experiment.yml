@@ -1,0 +1,11 @@
+# No `permissions:` block on purpose: declaring one makes the bundle overwrite the CAN_EDIT grant that the app resource
+# binding gives to the app service principal (and would create a dependency cycle with the app).
+resources:
+  experiments:
+    traces:
+      name: /Shared/${var.prefix}-chatbot/traces
+      trace_location:
+        uc_trace_location:
+          catalog: ${var.catalog}
+          # reference the schema resource (not ${var.schema}) so that the schema is created before the experiment
+          schema: ${resources.schemas.chatbot_schema.name}

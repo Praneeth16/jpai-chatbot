@@ -1,0 +1,18 @@
+resources:
+  pipelines:
+    ingest_pipeline:
+      name: ${var.prefix} ingest
+      catalog: ${var.catalog}
+      schema: ${resources.schemas.chatbot_schema.name}
+      serverless: true
+      continuous: false
+      development: false
+      root_path: ../src/ingest
+      libraries:
+        - glob:
+            include: ../src/ingest/transformations/**
+      configuration:
+        docs_path: /Volumes/${var.catalog}/${var.schema}/docs/
+        images_path: /Volumes/${var.catalog}/${var.schema}/page_images/
+        ingest_src_dir: ${workspace.file_path}/src/ingest
+        studies_csv: ${workspace.file_path}/data/reference/studies.csv

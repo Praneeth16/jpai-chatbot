@@ -1,0 +1,37 @@
+template_id,route_id,lang,text,version,status
+T_0A,0a,ja,入力内容を確認できませんでした。お知りになりたい内容を文章でご入力ください。,1,PLACEHOLDER
+T_0A,0a,en,I could not read your message. Please type your question in words.,1,PLACEHOLDER
+T_0B,0b,ja,恐れ入りますが、このご依頼にはお応えできません。アストラゼネカの医療用医薬品に関するご質問をお寄せください。,1,PLACEHOLDER
+T_0B,0b,en,"I am sorry, but I cannot help with that request. Please ask a question about AstraZeneca prescription medicines.",1,PLACEHOLDER
+T_0C_GREETING,0c_greeting,ja,こんにちは。アストラゼネカの医療用医薬品に関するご質問をお受けしています。製品名と、お知りになりたい内容（用法及び用量、副作用、臨床試験など）をお知らせください。,1,PLACEHOLDER
+T_0C_GREETING,0c_greeting,en,"Hello. I can help with questions about AstraZeneca prescription medicines. Please tell me the product and what you would like to know, for example dosage, side effects or clinical studies.",1,PLACEHOLDER
+T_0C_CLOSING,0c_closing,ja,ご利用いただきありがとうございました。他にご不明な点がございましたら、いつでもご質問ください。,1,PLACEHOLDER
+T_0C_CLOSING,0c_closing,en,"Thank you for using this service. If you have any other questions, please ask at any time.",1,PLACEHOLDER
+T_0C_ABOUT,0c_about,ja,このサービスは、アストラゼネカの医療用医薬品のインタビューフォームから、ご質問に該当する箇所をご案内する医療関係者向けのボットです。回答文を新たに作成することはなく、承認された文書の記載をそのまま表示します。,1,PLACEHOLDER
+T_0C_ABOUT,0c_about,en,This service is for healthcare professionals. It finds the part of the AstraZeneca interview form that matches your question and shows it as written. It does not write new answers.,1,PLACEHOLDER
+T_1,1,ja,副作用・有害事象に関する情報をお寄せいただき、ありがとうございます。ご報告は、担当MRまたはメディカルインフォメーションセンター（0120-189-115）までお願いいたします。医療関係者向けホームページ（MediChannel）https://med.astrazeneca.co.jp/ もご覧いただけます。,1,PLACEHOLDER
+T_1,1,en,Thank you for telling us about a side effect or adverse event. Please report it to your AstraZeneca MR or to the AstraZeneca Medical Information Center (0120-189-115). The healthcare professional website (MediChannel) is also available at https://med.astrazeneca.co.jp/,1,PLACEHOLDER
+T_2,2,ja,ご質問に該当する情報を、こちらでは確認できませんでした。お手数ですが、メディカルインフォメーションセンター（0120-189-115）までお問い合わせください。,1,PLACEHOLDER
+T_2,2,en,I could not find information that answers your question here. Please contact the AstraZeneca Medical Information Center (0120-189-115).,1,PLACEHOLDER
+T_3_1,3.1,ja,患者さん向けの資材は、医療関係者向けホームページ（MediChannel）https://med.astrazeneca.co.jp/ の製品ページでご確認いただけます。,1,PLACEHOLDER
+T_3_1,3.1,en,Materials for patients are available on the product pages of the healthcare professional website (MediChannel): https://med.astrazeneca.co.jp/,1,PLACEHOLDER
+T_3_2,3.2,ja,医療関係者向けの資材は、医療関係者向けホームページ（MediChannel）https://med.astrazeneca.co.jp/ でご確認いただけます。,1,PLACEHOLDER
+T_3_2,3.2,en,Materials for healthcare professionals are available on the healthcare professional website (MediChannel): https://med.astrazeneca.co.jp/,1,PLACEHOLDER
+T_4X_HEADER,4.1,ja,インタビューフォームの該当箇所を、記載のまま以下に表示します。,1,PLACEHOLDER
+T_4X_HEADER,4.1,en,"The relevant part of the interview form is shown below, as written.",1,PLACEHOLDER
+T_5_1_HEADER,5.1,ja,以下は臨床試験に関する情報です。インタビューフォームの該当箇所を、記載のまま表示します。この項には、承認された効能又は効果、用法及び用量の範囲外の情報が含まれる場合があります。,1,PLACEHOLDER
+T_5_1_HEADER,5.1,en,"The following is clinical study information, shown as written in the interview form. This part may contain information outside the approved indications and dosage and administration.",1,PLACEHOLDER
+T_5_2,5.2,ja,どの臨床試験についてお知りになりたいですか。試験名（例：HIMALAYA、POSEIDON）をお知らせください。,1,PLACEHOLDER
+T_5_2,5.2,en,"Which clinical study would you like to know about? Please tell me the study name, for example HIMALAYA or POSEIDON.",1,PLACEHOLDER
+T_6_1,6.1,ja,医療関係者向けホームページ（MediChannel）https://med.astrazeneca.co.jp/ をご覧ください。,1,PLACEHOLDER
+T_6_1,6.1,en,Please see the healthcare professional website (MediChannel): https://med.astrazeneca.co.jp/,1,PLACEHOLDER
+T_6_2,6.2,ja,担当MRまたはメディカルインフォメーションセンター（0120-189-115）までご連絡ください。,1,PLACEHOLDER
+T_6_2,6.2,en,Please contact your AstraZeneca MR or the AstraZeneca Medical Information Center (0120-189-115).,1,PLACEHOLDER
+T_7_1,7.1,ja,どの製品についてのご質問でしょうか。製品名（例：イジュド、イミフィンジ）をお知らせください。,1,PLACEHOLDER
+T_7_1,7.1,en,"Which product is your question about? Please tell me the product name, for example Imjudo or Imfinzi.",1,PLACEHOLDER
+T_8_1,8.1,ja,恐れ入りますが、アストラゼネカの医療用医薬品に関するご質問をお願いいたします。製品名と、お知りになりたい内容をお知らせください。,1,PLACEHOLDER
+T_8_1,8.1,en,"I am sorry, but I can only help with questions about AstraZeneca prescription medicines. Please tell me the product and what you would like to know.",1,PLACEHOLDER
+T_8_2,8.2,ja,このサービスでは、アストラゼネカの医療用医薬品以外のご質問にはお応えできません。医薬品に関するお問い合わせは、メディカルインフォメーションセンター（0120-189-115）をご利用ください。,1,PLACEHOLDER
+T_8_2,8.2,en,"This service cannot answer questions that are not about AstraZeneca prescription medicines. For medicine enquiries, please contact the AstraZeneca Medical Information Center (0120-189-115).",1,PLACEHOLDER
+T_4X_HEADER,4.2,ja,インタビューフォームの該当箇所を、記載のまま以下に表示します。,1,PLACEHOLDER
+T_4X_HEADER,4.2,en,"The relevant part of the interview form is shown below, as written.",1,PLACEHOLDER

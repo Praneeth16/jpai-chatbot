@@ -1,0 +1,5 @@
+resources:
+  vector_search_endpoints:
+    search_endpoint:
+      name: ${var.ai_search_endpoint}
+      endpoint_type: STANDARD

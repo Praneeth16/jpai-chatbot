@@ -1,0 +1,120 @@
+synonym_id,term,kind,target_id,lang
+product:IMJUDO:イジュド,イジュド,product,IMJUDO,ja
+product:IMJUDO:イジュド点滴静注,イジュド点滴静注,product,IMJUDO,ja
+product:IMJUDO:トレメリムマブ,トレメリムマブ,product,IMJUDO,ja
+product:IMJUDO:トレメリムマブ(遺伝子組換え),トレメリムマブ(遺伝子組換え),product,IMJUDO,ja
+product:IMJUDO:imjudo,imjudo,product,IMJUDO,en
+product:IMJUDO:tremelimumab,tremelimumab,product,IMJUDO,en
+product:IMJUDO:ijudo,ijudo,product,IMJUDO,en
+product:IMJUDO:ticilimumab,ticilimumab,product,IMJUDO,en
+product:IMFINZI:イミフィンジ,イミフィンジ,product,IMFINZI,ja
+product:IMFINZI:イミフィンジ点滴静注,イミフィンジ点滴静注,product,IMFINZI,ja
+product:IMFINZI:デュルバルマブ,デュルバルマブ,product,IMFINZI,ja
+product:IMFINZI:デュルバルマブ(遺伝子組換え),デュルバルマブ(遺伝子組換え),product,IMFINZI,ja
+product:IMFINZI:imfinzi,imfinzi,product,IMFINZI,en
+product:IMFINZI:durvalumab,durvalumab,product,IMFINZI,en
+product:IMFINZI:imifinji,imifinji,product,IMFINZI,en
+product:IMFINZI:medi4736,medi4736,product,IMFINZI,en
+study:HIMALAYA:himalaya,himalaya,study,HIMALAYA,en
+study:HIMALAYA:d419cc00002,d419cc00002,study,HIMALAYA,en
+study:HIMALAYA:ヒマラヤ,ヒマラヤ,study,HIMALAYA,ja
+study:POSEIDON:poseidon,poseidon,study,POSEIDON,en
+study:POSEIDON:d419mc00004,d419mc00004,study,POSEIDON,en
+study:POSEIDON:ポセイドン,ポセイドン,study,POSEIDON,ja
+study:D4190C00006:d4190c00006,d4190c00006,study,D4190C00006,en
+study:D4190C00022:d4190c00022,d4190c00022,study,D4190C00022,en
+study:D4880C00010:d4880c00010,d4880c00010,study,D4880C00010,en
+study:PACIFIC:pacific,pacific,study,PACIFIC,en
+study:PACIFIC:d4191c00001,d4191c00001,study,PACIFIC,en
+study:PACIFIC:パシフィック,パシフィック,study,PACIFIC,ja
+study:ATLANTIC:atlantic,atlantic,study,ATLANTIC,en
+study:ATLANTIC:d4191c00003,d4191c00003,study,ATLANTIC,en
+study:ATLANTIC:アトランティック,アトランティック,study,ATLANTIC,ja
+study:ARCTIC:arctic,arctic,study,ARCTIC,en
+study:ARCTIC:d4191c00004,d4191c00004,study,ARCTIC,en
+study:ARCTIC:アークティック,アークティック,study,ARCTIC,ja
+study:MYSTIC:mystic,mystic,study,MYSTIC,en
+study:MYSTIC:d419ac00001,d419ac00001,study,MYSTIC,en
+study:MYSTIC:ミスティック,ミスティック,study,MYSTIC,ja
+study:NEPTUNE:neptune,neptune,study,NEPTUNE,en
+study:NEPTUNE:d419ac00003,d419ac00003,study,NEPTUNE,en
+study:NEPTUNE:ネプチューン,ネプチューン,study,NEPTUNE,ja
+study:AEGEAN:aegean,aegean,study,AEGEAN,en
+study:AEGEAN:d9106c00001,d9106c00001,study,AEGEAN,en
+study:AEGEAN:エーゲアン,エーゲアン,study,AEGEAN,ja
+study:CASPIAN:caspian,caspian,study,CASPIAN,en
+study:CASPIAN:d419qc00001,d419qc00001,study,CASPIAN,en
+study:CASPIAN:カスピアン,カスピアン,study,CASPIAN,ja
+study:ADRIATIC:adriatic,adriatic,study,ADRIATIC,en
+study:ADRIATIC:d933qc00001,d933qc00001,study,ADRIATIC,en
+study:ADRIATIC:アドリアティック,アドリアティック,study,ADRIATIC,ja
+study:TOPAZ-1:topaz-1,topaz-1,study,TOPAZ-1,en
+study:TOPAZ-1:d933ac00001,d933ac00001,study,TOPAZ-1,en
+study:TOPAZ-1:トパーズ1,トパーズ1,study,TOPAZ-1,ja
+study:TOPAZ-1:topaz1,topaz1,study,TOPAZ-1,en
+study:DUO-E:duo-e,duo-e,study,DUO-E,en
+study:DUO-E:d9311c00001,d9311c00001,study,DUO-E,en
+study:DUO-E:デュオe,デュオe,study,DUO-E,ja
+study:DUO-E:duoe,duoe,study,DUO-E,en
+study:NIAGARA:niagara,niagara,study,NIAGARA,en
+study:NIAGARA:d933rc00001,d933rc00001,study,NIAGARA,en
+study:NIAGARA:ナイアガラ,ナイアガラ,study,NIAGARA,ja
+study:POTOMAC:potomac,potomac,study,POTOMAC,en
+study:POTOMAC:d419jc00001,d419jc00001,study,POTOMAC,en
+study:POTOMAC:ポトマック,ポトマック,study,POTOMAC,ja
+study:MATTERHORN:matterhorn,matterhorn,study,MATTERHORN,en
+study:MATTERHORN:d910gc00001,d910gc00001,study,MATTERHORN,en
+study:MATTERHORN:マッターホルン,マッターホルン,study,MATTERHORN,ja
+study:HAWK:hawk,hawk,study,HAWK,en
+study:HAWK:d4193c00001,d4193c00001,study,HAWK,en
+study:HAWK:ホーク,ホーク,study,HAWK,ja
+study:EAGLE:eagle,eagle,study,EAGLE,en
+study:EAGLE:d4193c00002,d4193c00002,study,EAGLE,en
+study:EAGLE:イーグル,イーグル,study,EAGLE,ja
+study:CONDOR:condor,condor,study,CONDOR,en
+study:CONDOR:d4193c00003,d4193c00003,study,CONDOR,en
+study:CONDOR:コンドル,コンドル,study,CONDOR,ja
+indication:HIMALAYA:肝細胞癌,肝細胞癌,indication,HIMALAYA,ja
+indication:HIMALAYA:切除不能な肝細胞癌,切除不能な肝細胞癌,indication,HIMALAYA,ja
+indication:HIMALAYA:肝がん,肝がん,indication,HIMALAYA,ja
+indication:HIMALAYA:hcc,hcc,indication,HIMALAYA,en
+indication:HIMALAYA:hepatocellular carcinoma,hepatocellular carcinoma,indication,HIMALAYA,en
+indication:HIMALAYA:liver cancer,liver cancer,indication,HIMALAYA,en
+indication:POSEIDON:非小細胞肺癌,非小細胞肺癌,indication,POSEIDON,ja
+indication:POSEIDON:切除不能な進行・再発の非小細胞肺癌,切除不能な進行・再発の非小細胞肺癌,indication,POSEIDON,ja
+indication:POSEIDON:nsclc,nsclc,indication,POSEIDON,en
+indication:POSEIDON:non-small cell lung cancer,non-small cell lung cancer,indication,POSEIDON,en
+indication:POSEIDON:non small cell lung cancer,non small cell lung cancer,indication,POSEIDON,en
+indication:PACIFIC:非小細胞肺癌,非小細胞肺癌,indication,PACIFIC,ja
+indication:PACIFIC:切除不能な局所進行の非小細胞肺癌,切除不能な局所進行の非小細胞肺癌,indication,PACIFIC,ja
+indication:PACIFIC:nsclc,nsclc,indication,PACIFIC,en
+indication:PACIFIC:non-small cell lung cancer,non-small cell lung cancer,indication,PACIFIC,en
+indication:PACIFIC:non small cell lung cancer,non small cell lung cancer,indication,PACIFIC,en
+indication:AEGEAN:非小細胞肺癌,非小細胞肺癌,indication,AEGEAN,ja
+indication:AEGEAN:nsclc,nsclc,indication,AEGEAN,en
+indication:AEGEAN:non-small cell lung cancer,non-small cell lung cancer,indication,AEGEAN,en
+indication:AEGEAN:non small cell lung cancer,non small cell lung cancer,indication,AEGEAN,en
+indication:CASPIAN:進展型小細胞肺癌,進展型小細胞肺癌,indication,CASPIAN,ja
+indication:CASPIAN:es-sclc,es-sclc,indication,CASPIAN,en
+indication:CASPIAN:extensive-stage small cell lung cancer,extensive-stage small cell lung cancer,indication,CASPIAN,en
+indication:ADRIATIC:限局型小細胞肺癌,限局型小細胞肺癌,indication,ADRIATIC,ja
+indication:ADRIATIC:ls-sclc,ls-sclc,indication,ADRIATIC,en
+indication:ADRIATIC:limited-stage small cell lung cancer,limited-stage small cell lung cancer,indication,ADRIATIC,en
+indication:TOPAZ-1:胆道癌,胆道癌,indication,TOPAZ-1,ja
+indication:TOPAZ-1:治癒切除不能な胆道癌,治癒切除不能な胆道癌,indication,TOPAZ-1,ja
+indication:TOPAZ-1:btc,btc,indication,TOPAZ-1,en
+indication:TOPAZ-1:biliary tract cancer,biliary tract cancer,indication,TOPAZ-1,en
+indication:DUO-E:子宮体癌,子宮体癌,indication,DUO-E,ja
+indication:DUO-E:進行・再発の子宮体癌,進行・再発の子宮体癌,indication,DUO-E,ja
+indication:DUO-E:endometrial cancer,endometrial cancer,indication,DUO-E,en
+indication:NIAGARA:筋層浸潤性膀胱癌,筋層浸潤性膀胱癌,indication,NIAGARA,ja
+indication:NIAGARA:mibc,mibc,indication,NIAGARA,en
+indication:NIAGARA:muscle-invasive bladder cancer,muscle-invasive bladder cancer,indication,NIAGARA,en
+indication:POTOMAC:筋層非浸潤性膀胱癌,筋層非浸潤性膀胱癌,indication,POTOMAC,ja
+indication:POTOMAC:高リスク筋層非浸潤性膀胱癌,高リスク筋層非浸潤性膀胱癌,indication,POTOMAC,ja
+indication:POTOMAC:nmibc,nmibc,indication,POTOMAC,en
+indication:POTOMAC:non-muscle-invasive bladder cancer,non-muscle-invasive bladder cancer,indication,POTOMAC,en
+indication:MATTERHORN:胃癌,胃癌,indication,MATTERHORN,ja
+indication:MATTERHORN:胃がん,胃がん,indication,MATTERHORN,ja
+indication:MATTERHORN:gastric cancer,gastric cancer,indication,MATTERHORN,en
+indication:MATTERHORN:gastric or gastroesophageal junction adenocarcinoma,gastric or gastroesophageal junction adenocarcinoma,indication,MATTERHORN,en

@@ -1,0 +1,209 @@
+resources:
+  jobs:
+    ingest_job:
+      name: ${var.prefix} ingest
+      description: Seed master data, copy shipped PDFs into the docs volume, parse and chunk new interview forms, publish Delta tables, refresh the index and Lakebase.
+      max_concurrent_runs: 1
+      environments:
+        - environment_key: default
+          spec:
+            client: "4"
+            dependencies:
+              - databricks-sdk>=0.140.0
+      tasks:
+        - task_key: seed_reference
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/jobs/seed_reference.py
+            parameters:
+              - --catalog
+              - ${var.catalog}
+              - --schema
+              - ${var.schema}
+              - --ref-dir
+              - ${workspace.file_path}/data/reference
+        - task_key: upload_docs
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/jobs/upload_docs.py
+            parameters:
+              - --src-dir
+              - ${workspace.file_path}/data/docs
+              - --volume-path
+              - /Volumes/${var.catalog}/${var.schema}/docs
+        - task_key: parse_and_chunk
+          depends_on:
+            - task_key: seed_reference
+            - task_key: upload_docs
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.ingest_pipeline.id}
+        - task_key: publish_tables
+          depends_on:
+            - task_key: parse_and_chunk
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/jobs/publish_tables.py
+            parameters:
+              - --catalog
+              - ${var.catalog}
+              - --schema
+              - ${var.schema}
+        - task_key: sync_index
+          depends_on:
+            - task_key: publish_tables
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/jobs/sync_index.py
+            parameters:
+              - --catalog
+              - ${var.catalog}
+              - --schema
+              - ${var.schema}
+              - --lakebase-catalog
+              - ${var.lakebase_catalog}
+              - --synced-schema
+              - ${var.synced_schema}
+              # finish only when the index sync and the synced-table pipeline updates are done (30 min timeout)
+              - --wait
+              - "true"
+              - --wait-timeout-minutes
+              - "30"
+
+    bootstrap_job:
+      name: ${var.prefix} bootstrap
+      description: Create the AI Search index and the Lakebase synced tables, then grant the app service principal read access. Idempotent; run again after the app exists.
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      # One-off: delete and recreate the AI Search index (needed when the index columns changed, e.g. qa_status was added):
+      #   databricks bundle run bootstrap_job --params recreate_index=true
+      parameters:
+        - name: recreate_index
+          default: "false"
+      environments:
+        - environment_key: default
+          spec:
+            client: "4"
+            dependencies:
+              - databricks-sdk>=0.140.0
+              - psycopg[binary]>=3.2
+      tasks:
+        - task_key: bootstrap
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/jobs/bootstrap.py
+            parameters:
+              - --catalog
+              - ${var.catalog}
+              - --schema
+              - ${var.schema}
+              - --endpoint
+              - ${var.ai_search_endpoint}
+              - --embedding-endpoint
+              - ${var.embedding_endpoint}
+              - --lakebase-project
+              - ${var.lakebase_project_id}
+              - --lakebase-catalog
+              - ${var.lakebase_catalog}
+              - --synced-schema
+              - ${var.synced_schema}
+              - --app-name
+              - ${var.prefix}-chatbot
+              - --classifier-model-service
+              - ${var.classifier_model_service}
+              - --recreate-index
+              - "{{job.parameters.recreate_index}}"
+
+    ae_notifier_job:
+      name: ${var.prefix} ae notifier
+      description: Move queued adverse-event candidates from Lakebase app.ae_queue to the UC table pv_cases and e-mail pharmacovigilance. Paused by default.
+      max_concurrent_runs: 1
+      # PAUSED by default: nothing is sent until a pharmacovigilance address is configured (see task notify_pv below).
+      # To switch it on, in a target override (databricks.yml) or here, set
+      #   resources.jobs.ae_notifier_job.schedule.pause_status: UNPAUSED
+      # and run `databricks bundle deploy` again (or press "Resume" on the schedule in the Jobs UI; the next deploy
+      # resets it to PAUSED unless the YAML says UNPAUSED).
+      schedule:
+        quartz_cron_expression: "0 0/15 * * * ?"
+        timezone_id: Asia/Tokyo
+        pause_status: PAUSED
+      environments:
+        - environment_key: default
+          spec:
+            client: "4"
+            dependencies:
+              - databricks-sdk>=0.140.0
+              - psycopg[binary]>=3.2
+      tasks:
+        - task_key: ae_notifier
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/jobs/ae_notifier.py
+            parameters:
+              - --catalog
+              - ${var.catalog}
+              - --schema
+              - ${var.schema}
+              - --lakebase-project
+              - ${var.lakebase_project_id}
+        - task_key: has_new_cases
+          depends_on:
+            - task_key: ae_notifier
+          condition_task:
+            op: GREATER_THAN
+            left: "{{tasks.ae_notifier.values.new_cases}}"
+            right: "0"
+        - task_key: notify_pv
+          depends_on:
+            - task_key: has_new_cases
+              outcome: "true"
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/jobs/notify_pv.py
+          # No `email_notifications` here on purpose. YAML cannot be conditional, and an empty address (the default of
+          # ${var.pv_notify_email}) makes the job definition invalid. This task runs only when ae_notifier found new
+          # cases, so its success e-mail IS the PV alert. Add the address per deployment in a target override in
+          # databricks.yml (task lists are merged by task_key):
+          #
+          #   targets:
+          #     dev:
+          #       resources:
+          #         jobs:
+          #           ae_notifier_job:
+          #             tasks:
+          #               - task_key: notify_pv
+          #                 email_notifications:
+          #                   on_success:
+          #                     - pv-team@example.com
+          #
+          # and then unpause the schedule (see the top of this job).
+
+    eval_job:
+      name: ${var.prefix} eval
+      description: Run the labelled evaluation set against the deployed app and log results to MLflow and eval_results.
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      environments:
+        - environment_key: eval
+          spec:
+            client: "4"
+            dependencies:
+              - mlflow[databricks]>=3.9
+              - databricks-sdk>=0.140.0
+              - pandas
+              - requests
+      tasks:
+        - task_key: run_eval
+          environment_key: eval
+          spark_python_task:
+            python_file: ../src/eval/run_eval.py
+            parameters:
+              - --catalog
+              - ${var.catalog}
+              - --schema
+              - ${var.schema}
+              - --app-name
+              - ${var.prefix}-chatbot
+              - --judge
+              - ${var.judge_endpoint}
+              - --experiment
+              - /Shared/${var.prefix}-chatbot/traces

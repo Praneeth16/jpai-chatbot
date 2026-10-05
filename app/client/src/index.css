@@ -1,0 +1,122 @@
+@import '@databricks/appkit-ui/styles.css';
+
+/*
+ * Restrained AstraZeneca-style palette: mulberry primary, warm neutrals.
+ * Light theme only (the demo is projected and screen-shared).
+ */
+:root {
+  color-scheme: light;
+  --radius: 0.5rem;
+  --background: #f6f5f7;
+  --foreground: #1d1a21;
+  --card: #ffffff;
+  --card-foreground: #1d1a21;
+  --popover: #ffffff;
+  --popover-foreground: #1d1a21;
+  --primary: #830051;
+  --primary-foreground: #ffffff;
+  --secondary: #efecf0;
+  --secondary-foreground: #3a3340;
+  --muted: #efecf0;
+  --muted-foreground: #615a68;
+  --accent: #f4e6ee;
+  --accent-foreground: #5c0039;
+  --destructive: #b3261e;
+  --border: #ddd8df;
+  --input: #cfc9d2;
+  --ring: #a3186f;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Hiragino Sans',
+    'Hiragino Kaku Gothic ProN',
+    'Yu Gothic UI',
+    'Yu Gothic',
+    'Noto Sans JP',
+    'Noto Sans CJK JP',
+    Meiryo,
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  overflow-wrap: anywhere;
+  line-break: strict;
+}
+
+html[lang='en'] body {
+  line-height: 1.6;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Verbatim Interview Form content: escaped text (pre-wrap, no markdown) plus sanitised HTML tables. */
+.verbatim {
+  font-size: 13.5px;
+  line-height: 1.8;
+}
+.verbatim > * + * {
+  margin-top: 0.75em;
+}
+.verbatim .verbatim-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.verbatim .table-scroll {
+  overflow-x: auto;
+}
+.verbatim table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.92em;
+  background: #fff;
+}
+.verbatim th,
+.verbatim td {
+  border: 1px solid #cfc9d2;
+  padding: 0.4em 0.65em;
+  vertical-align: top;
+  text-align: left;
+}
+.verbatim th {
+  background: #f1e7ee;
+  font-weight: 600;
+}
+.verbatim tbody tr:nth-child(even) td {
+  background: #faf8fa;
+}
+.verbatim caption {
+  caption-side: top;
+  text-align: left;
+  font-weight: 600;
+  padding-bottom: 0.3em;
+}
+
+.template-text p + p {
+  margin-top: 0.6em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
