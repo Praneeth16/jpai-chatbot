@@ -1,16 +1,39 @@
 import type { RouteId } from '../../shared/api';
 import type { RouterConfig } from './config';
+import { hasInjectionKeyword } from './injection-keywords';
+import { searchQuery } from './masterdata';
 import { TEMPLATE_BY_ROUTE } from './template-ids';
 import type { ConversationState, DecideInput, Decision, NeedsSearch, SearchFilters } from './types';
+
+/** A decision before the ae_review flag, which decide() sets once for every outcome. */
+type Routed = Omit<Decision, 'ae_review'>;
 
 /**
  * Pure routing decision, CONTRACTS section 6 step 5. No I/O: everything it needs is in the input.
  * Order: AE, injection, no request (small talk), intent.
+ * AE: at or above tau_ae_route the turn is answered with route 1. Between tau_ae and tau_ae_route (a question about
+ * side effects, not a report) it is routed normally and flagged ae_review so the orchestrator queues it for PV.
+ * Injection: the classifier probability or a keyword hit (the 4B model under-scores paraphrased injections).
+ * Product: named in the message, else the previous one on a clarification reply, else the previous one when it is
+ * one of the products a named study belongs to.
  */
 export function decide(input: DecideInput, config: RouterConfig): Decision {
+  const aeReview =
+    input.precheck_ok &&
+    input.classification.adverse_event >= config.tau_ae &&
+    input.classification.adverse_event < config.tau_ae_route;
+  return { ...decideRoute(input, config), ae_review: aeReview };
+}
+
+function decideRoute(input: DecideInput, config: RouterConfig): Routed {
   const { classification: c, masterdata: md, state } = input;
 
-  const product = md.product_code ?? (input.is_clarification ? state.last_product_code : null);
+  const product =
+    md.product_code ??
+    (input.is_clarification ? state.last_product_code : null) ??
+    (state.last_product_code && md.product_candidates.includes(state.last_product_code)
+      ? state.last_product_code
+      : null);
   const study = md.study_ids[0] ?? null;
 
   const settled = (over: Partial<ConversationState> = {}): ConversationState => ({
@@ -22,7 +45,7 @@ export function decide(input: DecideInput, config: RouterConfig): Decision {
     ...over,
   });
 
-  const terminal = (route: RouteId, ae = false): Decision => ({
+  const terminal = (route: RouteId, ae = false): Routed => ({
     route_id: route,
     needs_search: null,
     template_id: TEMPLATE_BY_ROUTE[route],
@@ -41,8 +64,8 @@ export function decide(input: DecideInput, config: RouterConfig): Decision {
     };
   }
 
-  if (c.adverse_event >= config.tau_ae) return terminal('1', true);
-  if (c.injection >= config.tau_inj) return terminal('0b');
+  if (c.adverse_event >= config.tau_ae_route) return terminal('1', true);
+  if (c.injection >= config.tau_inj || hasInjectionKeyword(input.merged_message)) return terminal('0b');
 
   // CONTRACTS 6.9: wants to report an AE. Same answer as an AE; the queue entry is only written above (ae = true),
   // because here no concrete event was described.
@@ -67,7 +90,7 @@ export function decide(input: DecideInput, config: RouterConfig): Decision {
   }
 
   // Off-topic turn: the streak feeds 8.1, then 8.2 (CONTRACTS section 6 step 5).
-  const offTopic = (): Decision => {
+  const offTopic = (): Routed => {
     const streak = state.off_topic_streak + 1;
     if (streak >= config.off_topic_streak) {
       return { ...terminal('8.2'), new_state: settled({ off_topic_streak: 0 }) };
@@ -77,7 +100,7 @@ export function decide(input: DecideInput, config: RouterConfig): Decision {
 
   // CONTRACTS section 8 loop breaker: asking "which product?" twice in a row counts as off-topic. 7.1 keeps the
   // streak (it is not an answer), otherwise the reset here would stop the streak from ever reaching 8.2.
-  const askProduct = (): Decision => {
+  const askProduct = (): Routed => {
     if (state.pending_clarification === 'product_focus') return offTopic();
     return {
       route_id: '7.1',
@@ -92,9 +115,9 @@ export function decide(input: DecideInput, config: RouterConfig): Decision {
     };
   };
 
-  const search = (route: RouteId, filters: SearchFilters, mode: NeedsSearch['mode']): Decision => ({
+  const search = (route: RouteId, filters: SearchFilters, mode: NeedsSearch['mode']): Routed => ({
     route_id: route,
-    needs_search: { filters, mode, query: input.merged_message },
+    needs_search: { filters, mode, query: searchQuery(input.merged_message, md) },
     template_id: TEMPLATE_BY_ROUTE[route],
     new_state: settled(),
     ae: false,
@@ -124,12 +147,15 @@ export function decide(input: DecideInput, config: RouterConfig): Decision {
         audience: input.audience,
         approved_flag: true,
       };
-      return c.has_conditions >= config.tau_cond
-        ? search('4.1', filters, 'subsection')
-        : search('4.2', filters, 'section');
+      const conditions =
+        c.has_conditions >= config.tau_cond ||
+        md.matched_terms.some((t) => t.kind === 'indication' || t.kind === 'study');
+      return conditions ? search('4.1', filters, 'subsection') : search('4.2', filters, 'section');
     }
     case 'efficacy_safety': {
-      if (!product) return askProduct();
+      // A study shared by several products (HIMALAYA) names no product, but the study itself is enough to search.
+      const candidates = !product && study && md.product_candidates.length > 1 ? md.product_candidates : null;
+      if (!product && !candidates) return askProduct();
       if (!study) {
         return {
           route_id: '5.2',
@@ -144,7 +170,7 @@ export function decide(input: DecideInput, config: RouterConfig): Decision {
       }
       // Clinical study sections are unapproved in the IF; HCP audience may see them under the 5.1 header.
       const filters: SearchFilters = {
-        product_code: product,
+        product_code: product ?? candidates ?? [],
         is_current: true,
         audience: input.audience,
         study_id: study,

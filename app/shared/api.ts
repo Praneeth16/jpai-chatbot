@@ -110,6 +110,7 @@ export interface SectionResponse {
 /** Thresholds in force for this turn (defaults plus ROUTER_CONFIG overrides), so the UI never hard-codes them. */
 export interface Thresholds {
   ae: number;
+  ae_route: number;
   injection: number;
   has_request: number;
   intent: number;

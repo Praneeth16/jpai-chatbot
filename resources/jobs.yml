@@ -209,3 +209,7 @@ resources:
               - ${var.judge_endpoint}
               - --experiment
               - /Shared/${var.prefix}-chatbot/traces
+              - --eval-set
+              - ${workspace.file_path}/src/eval/eval_set.jsonl
+              - --warehouse-id
+              - ${var.warehouse_id}

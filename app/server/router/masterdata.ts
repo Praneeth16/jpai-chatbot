@@ -129,11 +129,56 @@ export function matchMasterData(message: string, data: MasterData): MasterMatch 
     if (owners.size === 1) product = [...owners][0];
   }
 
+  // A study shared by several products (HIMALAYA: IMJUDO and IMFINZI) with no product named: offer them all.
+  const candidates: string[] = [];
+  if (product === null) {
+    const owners = new Set(studyIds.flatMap((id) => data.studies.find((s) => s.study_id === id)?.product_codes ?? []));
+    if (owners.size > 1) candidates.push(...[...owners].sort());
+  }
+
   return {
     product_code: product,
     study_ids: studyIds,
+    product_candidates: candidates,
     matched_terms: hits.flatMap((h) =>
       h.term.targets.map((t) => ({ term: h.term.term, kind: t.kind, target_id: t.target_id }))
     ),
   };
+}
+
+const FILLER = [
+  'について教えてください',
+  'について教えて',
+  'を教えてください',
+  'を教えて下さい',
+  'を教えて',
+  'について',
+  'はありますか',
+  'はどうですか',
+  'は何ですか',
+  'ですか',
+  'ください',
+  '教えて',
+  '?',
+  '。',
+  '、',
+].map(normalise);
+
+/**
+ * The text sent to AI Search. Every chunk embeds its product name and product is already a filter, so product names
+ * and polite filler are noise (top-1 retrieval 24/41 -> 28/41 without them). Falls back to the whole message when
+ * nothing useful is left.
+ */
+export function searchQuery(message: string, md: MasterMatch): string {
+  const full = normalise(message);
+  const products = [...new Set(md.matched_terms.filter((t) => t.kind === 'product').map((t) => t.term))].sort(
+    (a, b) => b.length - a.length
+  );
+  let q = full;
+  for (const t of [...products, ...FILLER]) q = q.split(t).join(' ');
+  q = q
+    .replace(/^[\sのはをで]+/u, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  return q.length < 2 ? full : q;
 }

@@ -50,8 +50,8 @@ export interface AeRow {
   message: string;
   /** Null when the classifier was unavailable. */
   ae_probability: number | null;
-  /** NEW = classified as an AE, UNCLASSIFIED = classifier down, kept for a human to look at. */
-  status: 'NEW' | 'UNCLASSIFIED';
+  /** NEW = classified as an AE, REVIEW = possible AE answered normally, UNCLASSIFIED = classifier down. */
+  status: 'NEW' | 'REVIEW' | 'UNCLASSIFIED';
 }
 
 /** Everything the orchestrator reads or writes in Lakebase. Tests replace it with an in-memory version. */

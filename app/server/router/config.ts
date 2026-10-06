@@ -4,6 +4,8 @@ import type { Thresholds } from '../../shared/api';
 // Thresholds from CONTRACTS section 6. Override with the ROUTER_CONFIG env var (JSON, same keys).
 const ConfigSchema = z.object({
   tau_ae: z.number().min(0).max(1).default(0.35),
+  /** At or above: the turn is answered with route 1. Between tau_ae and this: queued for PV review, routed normally. */
+  tau_ae_route: z.number().min(0).max(1).default(0.8),
   tau_inj: z.number().min(0).max(1).default(0.6),
   tau_req: z.number().min(0).max(1).default(0.3),
   tau_intent: z.number().min(0).max(1).default(0.55),
@@ -38,6 +40,7 @@ export function loadConfig(raw: string | undefined = process.env.ROUTER_CONFIG):
 export function thresholdsOf(c: RouterConfig): Thresholds {
   return {
     ae: c.tau_ae,
+    ae_route: c.tau_ae_route,
     injection: c.tau_inj,
     has_request: c.tau_req,
     intent: c.tau_intent,

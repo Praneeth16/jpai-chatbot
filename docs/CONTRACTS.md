@@ -192,3 +192,27 @@ boundaries (never ending on a heading block), titled "<title>（続き）". `if_
 publish time. The AE notifier forwards `NEW` and `UNCLASSIFIED` rows. `bootstrap_job` has job parameter
 `recreate_index` (default false) to rebuild the index when columns change. Publish merges only the newest parse per doc_id.
 PV email is configured per target with a `jobs.ae_notifier_job.email_notifications` override (see resources/jobs.yml comment).
+
+## 9. Live install and tuning (v1.4, after the first deploy and eval on fe-vm-lakebase-praneeth)
+Install
+- Traces: the experiment has a UC trace location; the MLflow npm client cannot write there (it uploads span data to a
+  presigned cloud URL the app cannot reach). The app exports OpenTelemetry spans to `{host}/api/2.0/otel/v1/traces`
+  with header `X-Databricks-UC-Table-Name` = the experiment tag `mlflow.experiment.databricksTraceSpanStorageTable`.
+  `bootstrap_job` (param `--experiment-id`) grants the app SP SELECT + MODIFY on that table.
+- `bootstrap_job` starts one update of the shared synced-table pipeline when tables attached to it are still offline.
+- System One services under `system.` cannot be read or granted by workspace users; bootstrap warns instead of failing.
+- The eval calls the app with an OAuth token; a job task token is rejected (401), so the eval runs with `--local` and
+  `DATABRICKS_TOKEN` from `databricks auth token`, and exits before evaluating when the app rejects the token.
+Router
+- AE has two tiers: `adverse_event >= tau_ae_route` (0.8) → route 1 + `ae_queue` status NEW; `tau_ae <= p < tau_ae_route`
+  → routed by intent and queued with status REVIEW (`ae_logged = true`). The AE notifier forwards NEW, UNCLASSIFIED, REVIEW.
+  Eval: true AE reports scored 0.92–1.00, questions about side effects 0.41–0.65. The band is a PV policy setting.
+- Injection: deterministic keyword backstop (`injection-keywords.ts`) in addition to `injection >= tau_inj`.
+- A study owned by several products (HIMALAYA, POSEIDON) with no product in the message: the last product of the
+  conversation if it is one of them, otherwise 5.1 searches all of them (`product_code` filter is a list).
+- drug_info counts as conditional (4.1) when an indication or study term matched.
+- Search query = message without product names and polite filler (`searchQuery`); the product is already a filter and
+  every chunk embeds the product name.
+Eval set
+- 52-04 → 5.1 (indication → unique study, v1.1 rule) and 71-05 → 4.2 IMFINZI (IMFINZI is now in the master data).
+- `ae_false_positive` counts only answers on route 1; REVIEW queueing is intended.

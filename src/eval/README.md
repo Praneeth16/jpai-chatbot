@@ -13,25 +13,18 @@ returned text; it never decides whether a route was correct.
 `id`, `lang`, `turns` (user messages in order; one fresh `conversation_id` per case), `expected_route` (route of the
 last turn), `expected_routes` (optional, every turn), `expected_section_path` (for `4.1`, `4.2`, `5.1`; prefix match, so
 a deeper hit under it counts), `alt_section_paths` (optional other acceptable paths where the IF repeats the content),
-`expected_product` (`IMJUDO` or null), `expected_ae`, `category`, `notes` (cases marked `AMBIGUOUS` test a rule the
+`expected_product` (a `product_code` from `data/reference/products.csv` or null), `expected_ae`, `category`, `notes` (cases marked `AMBIGUOUS` test a rule the
 diagram leaves open).
 
 ## Run as a job
-`eval_job` in `resources/jobs.yml` calls:
-
-```
-python src/eval/run_eval.py --catalog <c> --schema <s> --app-name <prefix>-chatbot \
-    --judge databricks-claude-opus-5-5 --experiment /Shared/<prefix>-chatbot/traces [--limit N]
-```
-
-Serverless environment needs: `mlflow[databricks]>=3.9`, `databricks-sdk`, `requests`. The job identity needs
-`CAN_USE` on the app, `SELECT` on `if_sections` and `templates`, `CREATE TABLE`/`MODIFY` on `eval_results`, and
-access to the judge serving endpoint. `--limit N` takes N cases round-robin across routes for a quick run.
+`eval_job` in `resources/jobs.yml` runs the same script on serverless. Databricks Apps accept OAuth tokens only, and
+the token of a job task is not one, so the app answers 401 and the script stops before evaluating (no rows are
+written). Use the laptop run below until the job runs as a service principal with an OAuth secret.
 
 ## Run on a laptop
 ```
 export DATABRICKS_HOST=https://<workspace>   # used for the SQL warehouse and MLflow
-export DATABRICKS_TOKEN=<token>              # bearer token for the app (OAuth token with CAN_USE)
+export DATABRICKS_TOKEN=$(databricks auth token --profile <profile> -o json | jq -r .access_token)  # OAuth (U2M)
 python src/eval/run_eval.py --local --base-url https://<app-url> --catalog <c> --schema <s> \
     --warehouse-id <sql-warehouse-id> --experiment /Shared/<prefix>-chatbot/traces --limit 15
 ```

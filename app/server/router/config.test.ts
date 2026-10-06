@@ -5,6 +5,7 @@ describe('config', () => {
   it('has the CONTRACTS defaults', () => {
     expect(thresholdsOf(DEFAULT_CONFIG)).toEqual({
       ae: 0.35,
+      ae_route: 0.8,
       injection: 0.6,
       has_request: 0.3,
       intent: 0.55,

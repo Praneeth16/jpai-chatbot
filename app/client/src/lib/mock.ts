@@ -275,7 +275,15 @@ function classification(spec: Spec): Classification | null {
     study_ids: spec.cls.study_ids ?? [],
     model: 'system.ai.openjev-qwen35-4b (mock)',
     degraded: false,
-    thresholds: { ae: 0.35, injection: 0.6, has_request: 0.3, intent: 0.55, conditions: 0.5, retrieval: 0 },
+    thresholds: {
+      ae: 0.35,
+      ae_route: 0.8,
+      injection: 0.6,
+      has_request: 0.3,
+      intent: 0.55,
+      conditions: 0.5,
+      retrieval: 0,
+    },
   };
 }
 

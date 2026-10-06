@@ -187,6 +187,7 @@ describe('handleTurn', () => {
     expect(r.classification).toMatchObject({ product_code: 'IMJUDO', model: 'system.ai.test' });
     expect(r.classification?.thresholds).toEqual({
       ae: 0.35,
+      ae_route: 0.8,
       injection: 0.6,
       has_request: 0.3,
       intent: 0.55,
@@ -256,6 +257,36 @@ describe('handleTurn', () => {
     expect(mem.ae).toHaveLength(1);
     expect(mem.ae[0]).toMatchObject({ turn_id: r.turn_id, ae_probability: 0.93, conversation_id: 'c1' });
     expect(search).not.toHaveBeenCalled();
+  });
+
+  it('review band: answered normally, queued as REVIEW with ae_logged true', async () => {
+    classify.mockResolvedValue(cls({ adverse_event: 0.5 }));
+    const r = await turn('イジュドの組成を教えて');
+    expect(r.route_id).toBe('4.2');
+    expect(r.ae_logged).toBe(true);
+    expect(mem.ae).toHaveLength(1);
+    expect(mem.ae[0]).toMatchObject({ status: 'REVIEW', ae_probability: 0.5, turn_id: r.turn_id });
+    expect(mem.turns).toHaveLength(1);
+  });
+
+  it('review band: a failed REVIEW insert keeps the answer and logs loudly', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const store = memStore(mem, { aeFailures: 99 });
+    classify.mockResolvedValue(cls({ adverse_event: 0.5 }));
+    const r = await turn('イジュドの組成を教えて', {}, deps({ store }));
+    expect(store.aeCalls).toBe(3);
+    expect(r.route_id).toBe('4.2');
+    expect(r.ae_logged).toBe(false);
+    expect(mem.turns).toHaveLength(1);
+    expect(errors.mock.calls.some((c) => String(c[0]).includes('AE REVIEW QUEUE WRITE FAILED'))).toBe(true);
+    errors.mockRestore();
+  });
+
+  it('a true AE report (>= tau_ae_route) is still queued as NEW', async () => {
+    classify.mockResolvedValue(cls({ adverse_event: 0.85 }));
+    const r = await turn('患者が発疹を発症しました');
+    expect(r.route_id).toBe('1');
+    expect(mem.ae[0].status).toBe('NEW');
   });
 
   it('6.9 report_ae: route 1 but nothing queued when no event was described', async () => {

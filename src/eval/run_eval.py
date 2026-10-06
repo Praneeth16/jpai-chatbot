@@ -22,7 +22,8 @@ import uuid
 from collections import defaultdict
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+# serverless job tasks run the file through exec() without __file__; the job passes --eval-set explicitly
+HERE = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
 SEARCH_ROUTES = {"4.1", "4.2", "5.1"}
 TARGETS = {  # metric -> (operator, threshold)
     "route_accuracy": (">=", 0.90),
@@ -182,7 +183,9 @@ def _turn_section_path(turn):
 
 
 def _ae_flagged(turn):
-    return bool(turn.get("ae_logged")) or turn.get("route_id") == "1"
+    # A false positive is a question answered with the AE template. Queuing a turn for PV review (ae_logged on another
+    # route, the tau_ae..tau_ae_route band) is intended and not counted.
+    return turn.get("route_id") == "1"
 
 
 def score_case(out, exp):
@@ -417,6 +420,8 @@ def main():
 
     w = WorkspaceClient()
     init_sql(w, a.warehouse_id)
+    if a.warehouse_id:  # MLflow reads traces of an experiment with a UC trace location through a SQL warehouse
+        os.environ.setdefault("MLFLOW_TRACING_SQL_WAREHOUSE_ID", a.warehouse_id)
     if a.local:
         token = os.environ.get("DATABRICKS_TOKEN")
         if not a.base_url or not token:
@@ -429,6 +434,14 @@ def main():
         _CFG["base_url"] = w.apps.get(a.app_name).url.rstrip("/")
         _CFG["auth"] = lambda: dict(w.config.authenticate())
     print(f"router: {_CFG['base_url']}")
+    import requests
+
+    health = requests.get(f"{_CFG['base_url']}/api/v1/health", headers=_CFG["auth"](), timeout=60)
+    if health.status_code in (401, 403):
+        # Databricks Apps accept OAuth tokens only; the token of a job task is not one.
+        sys.exit(f"the app rejected this identity's token (HTTP {health.status_code}). Run the evaluation with an OAuth "
+                 f"token: --local --base-url {_CFG['base_url']} with DATABRICKS_TOKEN from `databricks auth token`.")
+    health.raise_for_status()
 
     REF.update(load_reference(a.catalog, a.schema))
     print(f"reference: {len(REF['sections'])} sections, {sum(len(v) for v in REF['templates'].values())} templates")

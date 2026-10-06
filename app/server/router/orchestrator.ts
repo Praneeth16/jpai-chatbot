@@ -286,18 +286,19 @@ export async function handleTurn(req: RouteRequest, caller: Caller, deps: Deps):
     const latency = Date.now() - started;
     const traceId = trace.traceId();
 
-    // CONTRACTS section 8: a classified AE is queued as NEW. When the classifier was down the message cannot be
-    // judged, so it is queued as UNCLASSIFIED for a human (the keyword hit is kept in model_ids for triage).
+    // CONTRACTS section 8: a classified AE is queued as NEW, a possible one (the review band, answered normally)
+    // as REVIEW. When the classifier was down the message cannot be judged, so it is queued as UNCLASSIFIED for a
+    // human (the keyword hit is kept in model_ids for triage).
     const aeKeywordHit = raw?.degraded ? hasAeKeyword(merge.merged) : null;
     let ae: AeRow | null = null;
-    if (raw && decision.ae) {
+    if (raw && (decision.ae || decision.ae_review)) {
       ae = {
         ae_id: randomUUID(),
         turn_id: turnId,
         conversation_id: req.conversation_id,
         message: merge.merged,
         ae_probability: raw.adverse_event,
-        status: 'NEW',
+        status: decision.ae ? 'NEW' : 'REVIEW',
       };
     } else if (raw?.degraded) {
       ae = {
@@ -345,7 +346,15 @@ export async function handleTurn(req: RouteRequest, caller: Caller, deps: Deps):
         AE_WRITE_ATTEMPTS,
         deps.ae_retry_delay_ms ?? 150
       );
-      if (!aeLogged) {
+      if (!aeLogged && queued.status === 'REVIEW') {
+        // Only a possible AE: the turn keeps its answer, but the lost queue entry is loud and the turn is still logged.
+        console.error(
+          `[router] AE REVIEW QUEUE WRITE FAILED after ${AE_WRITE_ATTEMPTS} attempts, the turn is NOT queued. ` +
+            `ae_id=${queued.ae_id} turn_id=${turnId} conversation_id=${req.conversation_id} ` +
+            `message=${JSON.stringify(queued.message)}`
+        );
+        await logTurnOnly();
+      } else if (!aeLogged) {
         // The report could not be queued: tell the user to report it themselves (route 1) rather than lose it quietly.
         console.error(
           `[router] AE QUEUE WRITE FAILED after ${AE_WRITE_ATTEMPTS} attempts, the report is NOT queued. ` +

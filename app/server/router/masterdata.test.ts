@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MASTER } from './fixtures';
-import { buildTerms, matchMasterData, normalise, type MasterData } from './masterdata';
+import { buildTerms, matchMasterData, normalise, searchQuery, type MasterData } from './masterdata';
 
 const match = (m: string) => matchMasterData(m, MASTER);
 
@@ -165,5 +165,41 @@ describe.skipIf(!existsSync(path.join(refDir, 'studies.csv')))('masterdata again
 
   it('a one-study indication (TOPAZ-1) is still inferred', () => {
     expect(matchMasterData('イミフィンジの胆道癌', real).study_ids).toEqual(['TOPAZ-1']);
+  });
+});
+
+describe('product_candidates', () => {
+  it('a study of two products with no product named lists both, sorted', () => {
+    expect(match('HIMALAYA の結果').product_candidates).toEqual(['IMFINZI', 'IMJUDO']);
+  });
+
+  it('is empty when a product is named or the study has one owner', () => {
+    expect(match('イジュド HIMALAYA').product_candidates).toEqual([]);
+    expect(match('PACIFIC の結果').product_candidates).toEqual([]);
+    expect(match('用法を教えて').product_candidates).toEqual([]);
+  });
+});
+
+describe('searchQuery', () => {
+  const q = (m: string) => searchQuery(m, match(m));
+
+  it('drops the product name and polite filler', () => {
+    expect(q('イジュドの貯法を教えてください')).toBe('貯法');
+    expect(q('Imjudoの有効期間は？')).toBe('有効期間は');
+  });
+
+  it('removes every occurrence, brand and generic alike', () => {
+    const out = q('イジュド トレメリムマブ imjudo の用法用量について');
+    expect(out).toBe('用法用量');
+    for (const t of ['イジュド', 'トレメリムマブ', 'imjudo']) expect(out).not.toContain(t);
+  });
+
+  it('keeps study and indication terms', () => {
+    expect(q('イジュドのHIMALAYA試験の全生存期間を教えて')).toBe('himalaya試験の全生存期間');
+  });
+
+  it('falls back to the normalised message when (almost) nothing is left', () => {
+    expect(q('イジュド')).toBe('イジュド');
+    expect(q('ＩＭＪＵＤＯを教えて')).toBe('imjudoを教えて');
   });
 });

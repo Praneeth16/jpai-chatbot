@@ -4,12 +4,14 @@ Usage: python3 check_eval_set.py [--text /tmp/jd0300.txt] [--pdf data/docs/JD030
 If --text does not exist the text is produced with `pdftotext -layout` from --pdf.
 """
 import argparse
+import csv
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
 
+PRODUCTS = {r["product_code"] for r in csv.DictReader(open(Path(__file__).resolve().parents[2] / "data" / "reference" / "products.csv", encoding="utf-8"))}
 ROUTES = {"0a", "0b", "0c_greeting", "0c_closing", "0c_about", "1", "2", "3.1", "3.2", "4.1", "4.2",
           "5.1", "5.2", "6.1", "6.2", "7.1", "8.1", "8.2"}
 SEARCH_ROUTES = {"4.1", "4.2", "5.1"}
@@ -115,7 +117,7 @@ def main():
         if er is not None:
             if len(er) != len(c["turns"]) or er[-1] != c["expected_route"] or not set(er) <= ROUTES:
                 errors.append(f"{cid}: expected_routes inconsistent with turns/expected_route")
-        if c.get("expected_product") not in (None, "IMJUDO"):
+        if c.get("expected_product") not in (None, *PRODUCTS):
             errors.append(f"{cid}: bad expected_product")
         sec = c.get("expected_section_path")
         if sec is not None and c["expected_route"] not in SEARCH_ROUTES:

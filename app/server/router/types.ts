@@ -35,11 +35,14 @@ export interface MasterMatch {
   product_code: string | null;
   study_ids: string[];
   /** Normalised terms that matched, for traces. */
+  /** Products of the matched studies when they name more than one product and the message names none. */
+  product_candidates: string[];
   matched_terms: { term: string; kind: 'product' | 'study' | 'indication'; target_id: string }[];
 }
 
 export interface SearchFilters {
-  product_code: string;
+  /** An array means any of these products (AI Search IN filter). */
+  product_code: string | string[];
   is_current: true;
   /** Request audience, matched against the index column (CONTRACTS section 8). */
   audience: Audience;
@@ -62,6 +65,8 @@ export interface Decision {
   new_state: ConversationState;
   /** Route 1: the orchestrator must write app.ae_queue. */
   ae: boolean;
+  /** Queue the turn in app.ae_queue with status REVIEW; the route is not 1. */
+  ae_review: boolean;
 }
 
 export interface DecideInput {

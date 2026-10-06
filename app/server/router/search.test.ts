@@ -59,6 +59,12 @@ describe('searchIndex', () => {
     });
   });
 
+  it('passes a product list through as an IN filter', () => {
+    expect(buildFilters({ product_code: ['A', 'B'], is_current: true, audience: 'HCP' })).toMatchObject({
+      product_code: ['A', 'B'],
+    });
+  });
+
   it('CONTRACTS 8: require_qa_approved keeps only APPROVED sections', async () => {
     expect(buildFilters({ product_code: 'X', is_current: true, audience: 'HCP' }, true)).toEqual({
       product_code: 'X',

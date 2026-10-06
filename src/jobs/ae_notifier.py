@@ -8,8 +8,9 @@ The task value is set BEFORE the rows are marked NOTIFIED and the Postgres trans
 it raises: a case must never be marked notified when the condition task cannot see it. After a failure the rows are still
 queued and the next run moves them again (the pv_cases MERGE on case_id makes that safe).
 
-Rows with status UNCLASSIFIED (written when the classifier was unavailable, CONTRACTS section 8) are notified like NEW
-ones: they are exactly the cases nobody has looked at.
+Rows with status UNCLASSIFIED (written when the classifier was unavailable, CONTRACTS section 8) and REVIEW (an AE
+probability between tau_ae and tau_ae_route: the question was answered, but it may describe an event) are notified like
+NEW ones: they are exactly the cases nobody has looked at. pv_cases keeps no status, so PV triages them from the message.
 """
 import argparse
 
@@ -65,7 +66,7 @@ def main():
             return
         cur.execute(
             """SELECT ae_id::text, turn_id::text, conversation_id, message, ae_probability, created_at
-               FROM app.ae_queue WHERE status IN ('NEW', 'UNCLASSIFIED') ORDER BY created_at FOR UPDATE SKIP LOCKED"""
+               FROM app.ae_queue WHERE status IN ('NEW', 'UNCLASSIFIED', 'REVIEW') ORDER BY created_at FOR UPDATE SKIP LOCKED"""
         )
         rows = cur.fetchall()
         if rows:
