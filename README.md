@@ -47,3 +47,16 @@ See `docs/RUNBOOK.md` for adding a target for a new workspace.
 Template wording is placeholder (`status = PLACEHOLDER`) until AZ Medical / Legal / Regulatory approves it. Thresholds
 are tuned on the evaluation set; the adverse-event band (`tau_ae`, `tau_ae_route`) is a pharmacovigilance policy
 decision for AZ.
+
+## Evaluation (live dev workspace, 103 labelled cases, JD0300 + IMFINZI IFs)
+| metric | first run | current | target |
+|---|---|---|---|
+| route accuracy | 62.1% | 96.1% | ≥ 90% |
+| AE recall (route 1 + queued) | 100% | 100% | 100% |
+| AE false positive (question answered with the AE template) | 8.5% | 0% | |
+| section hit (right IF section) | 22.0% | 86.0% | ≥ 80% |
+| verbatim exact / template only | 100% / 100% | 100% / 100% | 100% |
+| latency p50 / p95 | 1.8 s / 2.5 s | 1.7 s / 2.6 s | |
+
+The LLM judge (tone and safety only) flags English questions answered with the verbatim Japanese IF text: by design
+nothing is translated or generated. What changed between the runs is listed in `docs/CONTRACTS.md` section 9.

@@ -14,7 +14,7 @@ Architecture: `docs/architecture/01-qa-routing-flow.drawio(.png)` and `02-databr
   `if_sections.markdown` of a section, optionally preceded by a template header.
 - Template wording is placeholder until AZ Medical / Legal / Regulatory approves it. Mark `status = 'PLACEHOLDER'`.
 - Customer repo: no internal Databricks material (Glean, Jira/ES tickets, internal FAQs, Slack).
-- Verified facts from spikes (workspace fe-vm-lakebase-praneeth, Oct 2026):
+- Verified facts from spikes (dev workspace, Oct 2026):
   - System One: `POST {host}/ai-gateway/typesafe/v1/systemone`, model `system.ai.openjev-qwen35-4b`, ~2 s per call,
     Japanese works (AE hidden in a thank-you scored 0.93). Response `answers.<id>.{noul | choice, confidence, probabilities}`.
   - `ai_parse_document(content, map('version','2.0'))`: element `type` values seen: section_header, text, table, page_number,
@@ -193,7 +193,7 @@ publish time. The AE notifier forwards `NEW` and `UNCLASSIFIED` rows. `bootstrap
 `recreate_index` (default false) to rebuild the index when columns change. Publish merges only the newest parse per doc_id.
 PV email is configured per target with a `jobs.ae_notifier_job.email_notifications` override (see resources/jobs.yml comment).
 
-## 9. Live install and tuning (v1.4, after the first deploy and eval on fe-vm-lakebase-praneeth)
+## 9. Live install and tuning (v1.4, after the first deploy and eval on the dev workspace)
 Install
 - Traces: the experiment has a UC trace location; the MLflow npm client cannot write there (it uploads span data to a
   presigned cloud URL the app cannot reach). The app exports OpenTelemetry spans to `{host}/api/2.0/otel/v1/traces`
