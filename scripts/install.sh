@@ -36,7 +36,7 @@ db bundle deploy
 step "ingest_job: seed master data, copy PDFs, parse, chunk, publish"
 db bundle run ingest_job
 
-step "bootstrap_job: AI Search index, Lakebase synced tables (grants are skipped while the app does not exist)"
+step "bootstrap_job: AI Search index, Lakebase synced tables, grants"
 db bundle run bootstrap_job
 
 step "start app"
@@ -46,5 +46,5 @@ step "bootstrap_job again: grants for the app service principal"
 db bundle run bootstrap_job
 
 step "done"
-APP_URL="$(db bundle summary --output json | python3 -c 'import json,sys; print(json.load(sys.stdin)["resources"]["apps"]["chatbot"].get("url",""))')"
+APP_URL="$(databricks apps get "${PREFIX}-chatbot" --profile "$PROFILE" --output json | python3 -c 'import json,sys; print(json.load(sys.stdin).get("url",""))')"
 echo "App URL: ${APP_URL:-<not available, see the Apps page>}"
