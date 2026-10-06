@@ -63,59 +63,65 @@ bash scripts/install.sh --host https://<your-workspace> --catalog <catalog> --wa
 Use `--profile <name>` instead of `--host` if you already have a Databricks CLI profile. Run
 `bash scripts/install.sh --help` for all options. The script is safe to re-run.
 
+The script logs you in as CLI profile **`jpai`** (or reuses a profile you already have for that workspace) and prints
+the profile name at the start and at the end. Use that name wherever this README says `--profile jpai`.
+
 ---
 
 ## 2B. Install step by step
 
 Use this to see what every step does, or if the script stops halfway.
 
-**Step 1: log in to your workspace** (opens a browser):
+**Step 1: log in to your workspace** (opens a browser). This creates the CLI profile `jpai`:
 ```bash
-databricks auth login --host https://<your-workspace> --profile az
+databricks auth login --host https://<your-workspace> --profile jpai
 ```
 
-**Step 2: tell the bundle your catalog and warehouse.** Use the same terminal for all later steps:
+**Step 2: tell the bundle your catalog and warehouse.** They are saved in a local file (not committed), so every
+later command only needs `--profile jpai`:
 ```bash
-export BUNDLE_VAR_catalog=<catalog>
-export BUNDLE_VAR_warehouse_id=<warehouse-id>
-databricks bundle validate --profile az      # should end with "Validation OK!"
+mkdir -p .databricks/bundle/az
+cat > .databricks/bundle/az/variable-overrides.json <<'EOF'
+{ "catalog": "<catalog>", "warehouse_id": "<warehouse-id>" }
+EOF
+databricks bundle validate --profile jpai      # should end with "Validation OK!"
 ```
 
 **Step 3: create the folder for the MLflow experiment:**
 ```bash
-databricks workspace mkdirs /Shared/jpai-chatbot --profile az
+databricks workspace mkdirs /Shared/jpai-chatbot --profile jpai
 ```
 
 **Step 4: deploy the bundle.** This creates the schema `<catalog>.jpai_chatbot`, the volumes, the Lakebase project,
 the AI Search endpoint, the ingestion pipeline, 4 jobs, the MLflow experiment and the app:
 ```bash
-databricks bundle deploy --profile az
+databricks bundle deploy --profile jpai
 ```
 
 **Step 5: load the documents.** This copies `data/docs/*.pdf` and the master data, then parses, splits and chunks
 the PDFs and publishes the tables (about 10–15 minutes):
 ```bash
-databricks bundle run ingest_job --profile az
+databricks bundle run ingest_job --profile jpai
 ```
 
 **Step 6: create the search index and the Lakebase synced tables** (about 20–40 minutes the first time):
 ```bash
-databricks bundle run bootstrap_job --profile az
+databricks bundle run bootstrap_job --profile jpai
 ```
 
 **Step 7: start the app:**
 ```bash
-databricks bundle run chatbot --profile az
+databricks bundle run chatbot --profile jpai
 ```
 
 **Step 8: give the app its permissions.** Run bootstrap again now that the app exists; it is quick this time:
 ```bash
-databricks bundle run bootstrap_job --profile az
+databricks bundle run bootstrap_job --profile jpai
 ```
 
 **Step 9: get the app URL:**
 ```bash
-databricks apps get jpai-chatbot --profile az
+databricks apps get jpai-chatbot --profile jpai
 ```
 
 ---
@@ -137,16 +143,18 @@ databricks apps get jpai-chatbot --profile az
 
 | task | how |
 |---|---|
-| Add or update an IF PDF | In the app: **Sources → Upload** (admins). Or copy it to `data/docs/`, then `databricks bundle deploy --profile az` and `databricks bundle run ingest_job --profile az`. A new product needs rows in `data/reference/products.csv`, `studies.csv` and `synonyms.csv` first. |
+| Add or update an IF PDF | In the app: **Sources → Upload** (admins). Or copy it to `data/docs/`, then `databricks bundle deploy --profile jpai` and `databricks bundle run ingest_job --profile jpai`. A new product needs rows in `data/reference/products.csv`, `studies.csv` and `synonyms.csv` first. |
 | Change template wording | Edit `data/reference/templates.csv`, then `bundle deploy` and `bundle run ingest_job`. The templates are **placeholders** until AZ Medical / Legal / Regulatory approve them. |
-| Change routing thresholds | Set the `ROUTER_CONFIG` env var of the app (JSON, keys in `app/server/router/config.ts`), then `databricks bundle deploy`. |
-| Deploy code changes | `databricks bundle deploy --profile az` |
-| Turn on PV e-mails | Unpause `jpai ae notifier` and add an e-mail notification (see `docs/RUNBOOK.md`). |
+| Change routing thresholds | In `resources/app.yml`, under `config.env`, add `- name: ROUTER_CONFIG` with `value: '{"tau_intent": 0.5, "tau_ae_route": 0.8}'` (keys and defaults in `app/server/router/config.ts`), then `databricks bundle deploy`. Do not set it in the Apps UI: the next deploy replaces it. |
+| Deploy code changes | `databricks bundle deploy --profile jpai` |
+| Turn on PV e-mails | Add the PV address under `targets: az:` in `databricks.yml` (copy the example in `resources/jobs.yml`, job `ae_notifier_job`), set its schedule to `UNPAUSED`, then `databricks bundle deploy`. |
 | Run the evaluation | See `src/eval/README.md` (runs from a laptop with your login). |
-| Uninstall | `databricks bundle destroy --profile az`. See `docs/RUNBOOK.md` for the index and synced tables. |
+| Uninstall | `databricks bundle destroy --profile jpai`. See `docs/RUNBOOK.md` for the index and synced tables. |
 
-If you used `install.sh`, the catalog and warehouse are saved in `.databricks/bundle/az/variable-overrides.json`,
-so these commands only need `--profile`. The profile `install.sh` created is printed at the start of its output.
+All commands use the default bundle target `az`; the catalog and warehouse come from
+`.databricks/bundle/az/variable-overrides.json` (written by `install.sh` or by you in step 2). In a fresh clone,
+recreate that file before running them. The bundle state is shared in the workspace
+(`/Workspace/Shared/.bundle/jpai-chatbot/az`), so colleagues deploying to the same workspace update the same install.
 
 If something fails, see **Troubleshooting** in [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 
@@ -165,7 +173,7 @@ If something fails, see **Troubleshooting** in [`docs/RUNBOOK.md`](docs/RUNBOOK.
 | App | `jpai-chatbot` |
 
 To change names, override the variables in `databricks.yml` (`prefix`, `schema`, `synced_schema`, `lakebase_project_id`,
-`ai_search_endpoint`), for example `export BUNDLE_VAR_schema=my_schema`.
+`ai_search_endpoint`), for example `export BUNDLE_VAR_schema=my_schema` before running `install.sh` or the step-by-step commands.
 
 ---
 

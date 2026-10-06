@@ -164,10 +164,10 @@ resources:
           # No `email_notifications` here on purpose. YAML cannot be conditional, and an empty address (the default of
           # ${var.pv_notify_email}) makes the job definition invalid. This task runs only when ae_notifier found new
           # cases, so its success e-mail IS the PV alert. Add the address per deployment in a target override in
-          # databricks.yml (task lists are merged by task_key):
+          # databricks.yml under the target you deploy (`az` unless you pass --target; task lists are merged by task_key):
           #
           #   targets:
-          #     dev:
+          #     az:
           #       resources:
           #         jobs:
           #           ae_notifier_job:

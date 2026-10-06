@@ -23,6 +23,10 @@ or `BUNDLE_VAR_*` environment variables. Order of the steps and why:
 4. `bootstrap_job`: AI Search index and Lakebase synced tables (they need the published tables);
 5. start the app, then `bootstrap_job` again to grant the app service principal its access (UC, Postgres, traces).
 
+Existing installs made before the `az` target existed (the old `install.sh <profile> [target]`, default target
+`dev`) keep their bundle state under that target: keep deploying them with `--target dev` (or the target you used).
+Running the new default target against the same workspace would try to create every resource a second time.
+
 A pinned target for a known workspace (like `dev` in `databricks.yml`) is optional: copy `dev`, set `workspace.host`
 and the variables, and pass `--target <name>`.
 
@@ -47,7 +51,7 @@ Results: MLflow evaluation run in the experiment, and the table `<catalog>.<sche
 - Thresholds: `ROUTER_CONFIG` env var on the app (JSON, keys in `app/server/router/config.ts`), redeploy to apply.
 - Pharmacovigilance: `ae_notifier_job` (paused by default) moves `app.ae_queue` rows (NEW, UNCLASSIFIED, REVIEW) into
   `<catalog>.<schema>.pv_cases` every 15 minutes. Set the PV e-mail with a per-target
-  `jobs.ae_notifier_job.email_notifications` override and unpause the schedule.
+  `jobs.ae_notifier_job` task override under the target you deploy (`targets: az:`; example in `resources/jobs.yml`) and unpause the schedule.
 - Traces: the MLflow experiment `/Shared/<prefix>-chatbot/traces` (UC tables `<catalog>.<schema>.experiment_*`).
 - Turn log, conversation state and AE queue: Lakebase schema `app`.
 
