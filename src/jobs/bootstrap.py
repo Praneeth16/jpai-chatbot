@@ -4,8 +4,9 @@
 2. UC catalog <lakebase_catalog> for the Lakebase database (created here, not in the bundle, because it needs the
    CREATE CATALOG privilege; an existing catalog is reused) and Lakebase synced tables for if_sections, docs_registry,
    products, studies, synonyms, templates in <lakebase_catalog>.<synced_schema> -> Postgres schema <synced_schema>
-3. Grants for the app service principal (UC: USE on catalog/schema, SELECT on the schema and the index, EXECUTE on the
-   classifier model service when it is not already granted to all users; Postgres: USAGE + SELECT on the synced schema).
+3. Grants for the app service principal (UC: USE on catalog/schema, SELECT on the schema and the index, SELECT + MODIFY
+   on the experiment's UC spans table, EXECUTE on the classifier model service when it is not already granted to all
+   users; Postgres: USAGE + SELECT on the synced schema).
    Skipped with a message when the app does not exist yet; run the job again after the app was created.
 
 Safe to run any number of times.
@@ -25,7 +26,7 @@ import psycopg
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.errors import NotFound, PermissionDenied, ResourceDoesNotExist
 from databricks.sdk.service import postgres as pg
-from databricks.sdk.service.catalog import PermissionsChange, Privilege, SecurableType
+from databricks.sdk.service.catalog import PermissionsChange, Privilege
 from databricks.sdk.service.vectorsearch import (
     DeltaSyncVectorIndexSpecRequest,
     EmbeddingSourceColumn,
@@ -203,10 +204,13 @@ def ensure_synced_tables(w, a):
         st = op.wait()
         pipeline_id = pipeline_id or (st.status.pipeline_id if st.status else None)
         print(f"synced table created: {synced_id}")
-    wait_synced_online(w, a)
+    wait_synced_online(w, a, pipeline_id)
 
 
-def wait_synced_online(w, a):
+def wait_synced_online(w, a, pipeline_id, sleep=time.sleep):
+    # Tables attached to an existing pipeline get no snapshot until that pipeline runs again: start one update when
+    # some tables are still offline and the pipeline is idle.
+    started = False
     deadline = time.time() + 30 * 60
     while time.time() < deadline:
         states = {}
@@ -216,7 +220,12 @@ def wait_synced_online(w, a):
         print("  synced tables:", states)
         if all("ONLINE" in s for s in states.values()):
             return
-        time.sleep(30)
+        if not started and pipeline_id and any("OFFLINE" in s for s in states.values()):
+            if "IDLE" in str(w.pipelines.get(pipeline_id).state):
+                w.pipelines.start_update(pipeline_id)
+                started = True
+                print(f"  started synced-table pipeline update {pipeline_id} for the offline tables")
+        sleep(30)
     print("WARNING: synced tables not all online after 30 minutes; continuing")
 
 
@@ -247,10 +256,24 @@ def grant_model_service(w, a, sp):
                 return
         except Exception:
             pass
+        if a.classifier_model_service.startswith("system."):
+            # Databricks-owned services: workspace users cannot read or change their grants, and they are executable
+            # by all users by default. A missing grant shows up as classification.degraded in the app.
+            print(f"  WARNING: cannot check or grant EXECUTE on {a.classifier_model_service} ({e}); assuming the default grant")
+            return
         raise RuntimeError(
             f"could not grant EXECUTE on model service {a.classifier_model_service} to {sp} and it is not effective: {e}. "
             f"Ask the owner of the model service to grant EXECUTE to the app service principal, then run bootstrap_job again."
         ) from e
+
+
+SPANS_TABLE_TAG = "mlflow.experiment.databricksTraceSpanStorageTable"
+
+
+def trace_spans_table(w, experiment_id):
+    """UC table that holds the spans of an experiment with a UC trace location, or None."""
+    exp = w.experiments.get_experiment(experiment_id).experiment
+    return next((t.value for t in (exp.tags or []) if t.key == SPANS_TABLE_TAG), None)
 
 
 def grant_app(w, a, index_name):
@@ -264,11 +287,19 @@ def grant_app(w, a, index_name):
         print(f"app '{a.app_name}' has no service principal yet: grants skipped")
         return
     print(f"granting read access to app service principal {sp}")
-    for stype, full, privs in [
-        (SecurableType.CATALOG, a.catalog, [Privilege.USE_CATALOG]),
-        (SecurableType.SCHEMA, f"{a.catalog}.{a.schema}", [Privilege.USE_SCHEMA, Privilege.SELECT]),
-        (SecurableType.TABLE, index_name, [Privilege.SELECT]),
-    ]:
+    # securable types as plain strings: the SDK puts them into the URL path, and str(SecurableType.X) is not valid there
+    grants = [
+        ("catalog", a.catalog, [Privilege.USE_CATALOG]),
+        ("schema", f"{a.catalog}.{a.schema}", [Privilege.USE_SCHEMA, Privilege.SELECT]),
+        ("table", index_name, [Privilege.SELECT]),
+    ]
+    spans_table = trace_spans_table(w, a.experiment_id)
+    if spans_table:
+        # the app writes its MLflow traces to this table through the workspace OTLP endpoint
+        grants.append(("table", spans_table, [Privilege.SELECT, Privilege.MODIFY]))
+    else:
+        print(f"  experiment {a.experiment_id} has no UC trace location: trace table grant skipped")
+    for stype, full, privs in grants:
         w.grants.update(securable_type=stype, full_name=full, changes=[PermissionsChange(principal=sp, add=privs)])
         print(f"  UC: {[p.value for p in privs]} on {full}")
 
@@ -302,6 +333,7 @@ def main():
     ap.add_argument("--synced-schema", required=True, help="UC + Postgres schema of the synced tables (not the source schema)")
     ap.add_argument("--app-name", required=True)
     ap.add_argument("--classifier-model-service", required=True)
+    ap.add_argument("--experiment-id", required=True, help="MLflow experiment the app writes traces to")
     ap.add_argument(
         "--recreate-index",
         nargs="?",

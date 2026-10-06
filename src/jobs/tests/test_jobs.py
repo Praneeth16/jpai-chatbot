@@ -195,7 +195,7 @@ class FakeApi:
         return {}
 
 
-MODEL_ARGS = NS(classifier_model_service="system.ai.m")
+MODEL_ARGS = NS(classifier_model_service="main.models.m")
 
 
 def test_model_service_grant_failure_raises_when_not_effective():
@@ -203,6 +203,12 @@ def test_model_service_grant_failure_raises_when_not_effective():
     w = NS(api_client=FakeApi(effective=False, patch_fails=True))
     with pytest.raises(RuntimeError, match="could not grant EXECUTE"):
         bs.grant_model_service(w, MODEL_ARGS, "sp-1")
+
+
+def test_model_service_grant_failure_on_a_system_service_only_warns():
+    bs = load("bootstrap")
+    w = NS(api_client=FakeApi(effective=False, patch_fails=True))
+    bs.grant_model_service(w, NS(classifier_model_service="system.ai.m"), "sp-1")  # no exception
 
 
 def test_model_service_grant_is_skipped_when_already_effective_and_ok_when_it_succeeds():
@@ -462,3 +468,21 @@ def test_upload_docs_copies_uppercase_pdf_extensions():
         sys.argv = ["upload_docs.py", "--src-dir", src, "--volume-path", dst]
         ud.main()
         assert sorted(os.listdir(dst)) == ["B.PDF", "a.pdf"]
+
+
+def test_offline_synced_tables_get_one_pipeline_update_then_wait_until_online():
+    bs = load("bootstrap")
+    calls = {"get": 0, "start": 0}
+
+    def get_synced_table(name):
+        calls["get"] += 1
+        online = calls["start"] and calls["get"] > 2 * len(bs.SYNCED)
+        state = "SYNCED_TABLE_ONLINE_NO_PENDING_UPDATE" if online or name.endswith(".if_sections") else "SYNCED_TABLE_OFFLINE"
+        return NS(status=NS(detailed_state=state))
+
+    w = NS(
+        postgres=NS(get_synced_table=get_synced_table),
+        pipelines=NS(get=lambda pid: NS(state="IDLE"), start_update=lambda pid: calls.__setitem__("start", calls["start"] + 1)),
+    )
+    bs.wait_synced_online(w, NS(lakebase_catalog="c", synced_schema="s"), "p1", sleep=lambda s: None)
+    assert calls["start"] == 1

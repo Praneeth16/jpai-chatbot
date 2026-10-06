@@ -110,6 +110,8 @@ resources:
               - ${var.prefix}-chatbot
               - --classifier-model-service
               - ${var.classifier_model_service}
+              - --experiment-id
+              - ${resources.experiments.traces.id}
               - --recreate-index
               - "{{job.parameters.recreate_index}}"
 

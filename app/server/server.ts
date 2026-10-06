@@ -3,7 +3,7 @@ import { runMigrations } from './db/migrate';
 import { withTransactions } from './db/transaction';
 import { loadConfig } from './router/config';
 import { createStore } from './router/store';
-import { initTracing, mlflowTracer } from './router/trace';
+import { initTracing, otelTracer } from './router/trace';
 import { registerRoutes } from './routes';
 import type { Appkit } from './types';
 
@@ -12,11 +12,11 @@ createApp({
   async onPluginsReady(appkit) {
     const kit = appkit as unknown as Appkit;
     await runMigrations(kit.lakebase);
-    initTracing();
+    await initTracing();
     registerRoutes(kit, {
       store: createStore(withTransactions(kit.lakebase)),
       config: loadConfig(),
-      tracer: mlflowTracer,
+      tracer: otelTracer,
     });
   },
 }).catch((err: unknown) => {

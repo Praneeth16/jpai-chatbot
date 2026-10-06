@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mlflowTracer, noopTracer, noopTurnTrace } from './trace';
+import { otelTracer, noopTracer, noopTurnTrace } from './trace';
 
 describe('trace', () => {
   it('the no-op trace runs the function and returns its result', async () => {
@@ -11,9 +11,9 @@ describe('trace', () => {
     ).toBe('ok');
   });
 
-  it('without initTracing the MLflow tracer is a pass-through and keeps errors from the turn', async () => {
+  it('without initTracing the OTel tracer is a pass-through and keeps errors from the turn', async () => {
     const meta = { conversation_id: 'c', turn_id: 't', message: 'm' };
-    expect(await mlflowTracer.turn(meta, async (t) => t.span('s', {}, () => 'v'))).toBe('v');
-    await expect(mlflowTracer.turn(meta, () => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
+    expect(await otelTracer.turn(meta, async (t) => t.span('s', {}, () => 'v'))).toBe('v');
+    await expect(otelTracer.turn(meta, () => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
   });
 });
