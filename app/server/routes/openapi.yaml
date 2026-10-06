@@ -487,11 +487,20 @@ components:
     Thresholds:
       type: object
       description: Thresholds in force for the turn (defaults plus the ROUTER_CONFIG overrides)
-      required: [ae, injection, has_request, intent, conditions, retrieval]
+      required: [ae, ae_route, injection, has_request, intent, conditions, retrieval, title]
       properties:
         ae:
           type: number
+          description: At or above, the turn is queued for PV review (status REVIEW)
           example: 0.35
+        ae_route:
+          type: number
+          description: At or above, the turn is answered with route 1 and queued with status NEW
+          example: 0.8
+        title:
+          type: number
+          description: Minimum section-title coverage for the table-of-contents match (4.x)
+          example: 0.6
         injection:
           type: number
           example: 0.6
@@ -500,7 +509,7 @@ components:
           example: 0.3
         intent:
           type: number
-          example: 0.55
+          example: 0.5
         conditions:
           type: number
           example: 0.5
@@ -585,6 +594,13 @@ components:
       type: object
       required: [query, filters, top_score, hits]
       properties:
+        selection:
+          type: string
+          enum: [title, search]
+          description: How the section was chosen (4.x table-of-contents match or search ranking)
+        title_score:
+          type: number
+          nullable: true
         query:
           type: string
         filters:

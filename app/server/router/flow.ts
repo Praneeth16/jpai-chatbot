@@ -3,6 +3,7 @@ import type { RouterConfig } from './config';
 import { hasInjectionKeyword } from './injection-keywords';
 import { searchQuery } from './masterdata';
 import { TEMPLATE_BY_ROUTE } from './template-ids';
+import { bestTitleMatch, titleScore, type TitleRow } from './title-match';
 import type { ConversationState, DecideInput, Decision, NeedsSearch, SearchFilters } from './types';
 
 /** A decision before the ae_review flag, which decide() sets once for every outcome. */
@@ -124,9 +125,17 @@ function decideRoute(input: DecideInput, config: RouterConfig): Routed {
   });
 
   const intent = c.intent;
-  if (intent.confidence < config.tau_intent) return askProduct();
+  if (intent.confidence < config.tau_intent) {
+    // Nothing was asked (keyboard mash, a stray word): asking "which product?" makes no sense, so it is off-topic.
+    return c.has_request < config.tau_req ? offTopic() : askProduct();
+  }
 
-  switch (intent.choice) {
+  // A question that names a trial (not an indication that implies one) asks for the trial results: the 4B model
+  // often labels "HIMALAYA試験での主な副作用" as drug_info.
+  const namedStudy = md.matched_terms.some((t) => t.kind === 'study');
+  const choice = intent.choice === 'drug_info' && namedStudy ? 'efficacy_safety' : intent.choice;
+
+  switch (choice) {
     case 'unanswerable':
       return terminal('2');
     case 'patient_materials':
@@ -174,6 +183,9 @@ function decideRoute(input: DecideInput, config: RouterConfig): Routed {
         is_current: true,
         audience: input.audience,
         study_id: study,
+        // JSHP IF format: chapter Ⅴ.5 (臨床成績) holds the study results; its chunks rarely outrank the chapters that
+        // only mention the study, so it is searched first.
+        section_prefix: 'Ⅴ.5',
       };
       if (input.audience !== 'HCP') filters.approved_flag = true;
       return search('5.1', filters, 'subsection');
@@ -215,6 +227,10 @@ export interface Finalized {
   top_score: number | null;
   /** Best score per section, descending. */
   section_scores: { section_id: string; score: number }[];
+  /** 'title': the section was chosen by its title (4.x), 'search': by the vector hits. */
+  selection: 'title' | 'search';
+  /** Share of the title covered by the query when selection is 'title'. */
+  title_score: number | null;
 }
 
 /** Best score per section_id, sorted descending. */
@@ -226,6 +242,15 @@ export function groupBySection(hits: SearchHit[]): { section_id: string; score: 
 
 /** FRONT is the cover, table of contents and abbreviations. It is never chunked and never answered. */
 export const isFront = (sectionPath: string): boolean => /^FRONT(?![A-Za-z0-9])/i.test(sectionPath.trim());
+
+/**
+ * JSHP IF format: chapter Ⅴ.5 (臨床成績) holds the clinical study results; other chapters only mention the study.
+ * Compared after NFKC, so the Roman numeral Ⅴ (U+2164) and a typed "V" are the same.
+ */
+export const isClinicalStudyPath = (sectionPath: string): boolean => {
+  const p = sectionPath.normalize('NFKC').trim();
+  return p === 'V.5' || p.startsWith('V.5.') || p.startsWith('V.5#');
+};
 
 type Answerable = Pick<SectionMeta, 'section_path' | 'level' | 'is_current' | 'qa_status' | 'approved_flag'>;
 
@@ -247,15 +272,20 @@ export function isAnswerable(s: Answerable, requireApproved: boolean, config: Ro
 /**
  * CONTRACTS section 6 steps 5 to 6 plus section 8: below tau_ret (or no answerable hit) the answer is route 2.
  * Hits whose section is unknown or not answerable are skipped before anything else is decided.
+ * 4.x with titleRows (the product's sections, only passed when the search worked): a section whose title the query
+ * covers by at least tau_title wins over the vector hits (answerable, approved, not a pseudo-section). 4.1 answers
+ * with it as is, 4.2 walks up from it. Without a title match the rules below apply unchanged.
  * 4.1: deepest section among hits scoring within depth_margin of the best hit.
  * 4.2: from the best hit walk up to the largest ancestor (level 2 or deeper) that is at most max_verbatim_chars.
- * 5.1: the best hit section (the study filter already guarantees it concerns the study).
+ * 5.1: the best hit section inside IF chapter Ⅴ.5 when there is one, else the best hit section (the study filter
+ * already guarantees it concerns the study).
  */
 export function finalize(
   decision: Decision,
   hits: SearchHit[],
   sections: Map<string, SectionMeta>,
-  config: RouterConfig
+  config: RouterConfig,
+  titleRows: TitleRow[] | null = null
 ): Finalized {
   const scores = groupBySection(hits);
   const fallback = (top: number | null): Finalized => ({
@@ -264,16 +294,50 @@ export function finalize(
     section_id: null,
     top_score: top,
     section_scores: scores,
+    selection: 'search',
+    title_score: null,
   });
 
   const need = decision.needs_search;
   if (!need || scores.length === 0) return fallback(null);
   const topOverall = scores[0].score;
 
+  // The lineage of the hits, plus the sections the title match knows (their parents are needed for the 4.2 walk-up).
+  const known = titleRows
+    ? new Map<string, SectionMeta>([...titleRows.map((r) => [r.section_id, r] as const), ...sections])
+    : sections;
   const ok = (id: string): SectionMeta | null => {
-    const m = sections.get(id);
+    const m = known.get(id);
     return m && isAnswerable(m, need.filters.approved_flag === true, config) ? m : null;
   };
+  const walkUp = (from: string): string => {
+    let chosen = from;
+    for (;;) {
+      const parentId = known.get(chosen)?.parent_section_id;
+      const parent = parentId ? ok(parentId) : null;
+      if (!parent || parent.char_len === null || parent.char_len > config.max_verbatim_chars) return chosen;
+      chosen = parent.section_id;
+    }
+  };
+  const done = (section_id: string, selection: 'title' | 'search', title_score: number | null): Finalized => ({
+    route_id: decision.route_id,
+    template_id: decision.template_id,
+    section_id,
+    top_score: topOverall,
+    section_scores: scores,
+    selection,
+    title_score,
+  });
+
+  if (titleRows && (decision.route_id === '4.1' || decision.route_id === '4.2')) {
+    const eligible = titleRows.filter((r) => !r.is_pseudo && isAnswerable(r, true, config));
+    const match = bestTitleMatch(need.query, eligible, config.tau_title);
+    if (match) {
+      const id = decision.route_id === '4.2' ? walkUp(match.section_id) : match.section_id;
+      return done(id, 'title', titleScore(need.query, match.title));
+    }
+  }
+
   const candidates = scores.filter((s) => ok(s.section_id));
   if (candidates.length === 0) return fallback(topOverall);
   const top = candidates[0];
@@ -281,28 +345,23 @@ export function finalize(
 
   let chosen = top.section_id;
   if (decision.route_id === '4.2') {
-    for (;;) {
-      const parentId = sections.get(chosen)?.parent_section_id;
-      const parent = parentId ? ok(parentId) : null;
-      if (!parent || parent.char_len === null || parent.char_len > config.max_verbatim_chars) break;
-      chosen = parent.section_id;
-    }
+    chosen = walkUp(chosen);
   } else if (decision.route_id === '4.1') {
     const floor = top.score * (1 - config.depth_margin);
     const near = candidates.filter((s) => s.score >= floor);
     near.sort(
-      (a, b) => (sections.get(b.section_id)?.level ?? 0) - (sections.get(a.section_id)?.level ?? 0) || b.score - a.score
+      (a, b) => (known.get(b.section_id)?.level ?? 0) - (known.get(a.section_id)?.level ?? 0) || b.score - a.score
     );
     chosen = near[0].section_id;
+  } else if (decision.route_id === '5.1') {
+    // Candidates are sorted by score, so the first one in Ⅴ.5 is the best one in Ⅴ.5.
+    const clinical = candidates.find(
+      (s) => s.score >= config.tau_ret && isClinicalStudyPath(known.get(s.section_id)?.section_path ?? '')
+    );
+    if (clinical) chosen = clinical.section_id;
   }
 
-  return {
-    route_id: decision.route_id,
-    template_id: decision.template_id,
-    section_id: chosen,
-    top_score: topOverall,
-    section_scores: scores,
-  };
+  return done(chosen, 'search', null);
 }
 
 /** State to persist when a search route falls back to 2: nothing is pending and the streak is reset. */

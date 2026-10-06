@@ -62,34 +62,44 @@ export async function searchIndex(
   indexName: string | undefined = process.env.AI_SEARCH_INDEX
 ): Promise<SearchResult> {
   if (!indexName) throw new Error('AI_SEARCH_INDEX is not set');
-  const filters = buildFilters(need.filters, config.require_qa_approved);
+  const base = buildFilters(need.filters, config.require_qa_approved);
   const study = need.filters.study_id;
-  const raw = await post(indexName, {
-    query_text: need.query,
-    query_type: 'HYBRID',
-    num_results: study ? config.num_results * 3 : config.num_results,
-    columns: SEARCH_COLUMNS,
-    filters_json: JSON.stringify(filters),
-  });
-  const parsed = QueryResponse.parse(raw);
-  const names = parsed.manifest.columns.map((c) => c.name);
-  const col = (row: unknown[], name: string): unknown => row[names.indexOf(name)];
+  const prefix = need.filters.section_prefix;
 
-  const hits = parsed.result.data_array
-    .map((row) => {
-      const studies = col(row, 'study_ids');
-      return {
-        chunk_id: String(col(row, 'chunk_id')),
-        section_id: String(col(row, 'section_id')),
-        section_path: col(row, 'section_path') == null ? null : String(col(row, 'section_path')),
-        // The last manifest column is the relevance score.
-        score: Number(row[row.length - 1]),
-        studies: Array.isArray(studies) ? studies.map(String) : [],
-      };
-    })
-    .filter((h) => !study || h.studies.includes(study))
-    .slice(0, config.num_results)
-    .map(({ studies: _studies, ...h }) => h);
+  const run = async (filters: Record<string, unknown>): Promise<SearchResult['hits']> => {
+    const raw = await post(indexName, {
+      query_text: need.query,
+      query_type: 'HYBRID',
+      num_results: study ? config.num_results * 3 : config.num_results,
+      columns: SEARCH_COLUMNS,
+      filters_json: JSON.stringify(filters),
+    });
+    const parsed = QueryResponse.parse(raw);
+    const names = parsed.manifest.columns.map((c) => c.name);
+    const col = (row: unknown[], name: string): unknown => row[names.indexOf(name)];
+    return parsed.result.data_array
+      .map((row) => {
+        const studies = col(row, 'study_ids');
+        return {
+          chunk_id: String(col(row, 'chunk_id')),
+          section_id: String(col(row, 'section_id')),
+          section_path: col(row, 'section_path') == null ? null : String(col(row, 'section_path')),
+          // The last manifest column is the relevance score.
+          score: Number(row[row.length - 1]),
+          studies: Array.isArray(studies) ? studies.map(String) : [],
+        };
+      })
+      .filter((h) => !study || h.studies.includes(study))
+      .slice(0, config.num_results)
+      .map(({ studies: _studies, ...h }) => h);
+  };
 
+  // Standard endpoints treat "LIKE" as a substring match.
+  let filters = prefix ? { ...base, 'section_path LIKE': prefix } : base;
+  let hits = await run(filters);
+  if (prefix && hits.length === 0) {
+    filters = base;
+    hits = await run(filters);
+  }
   return { query: need.query, filters: study ? { ...filters, study_ids: study } : filters, hits };
 }

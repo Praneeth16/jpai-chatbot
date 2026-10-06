@@ -8,10 +8,15 @@ const ConfigSchema = z.object({
   tau_ae_route: z.number().min(0).max(1).default(0.8),
   tau_inj: z.number().min(0).max(1).default(0.6),
   tau_req: z.number().min(0).max(1).default(0.3),
-  tau_intent: z.number().min(0).max(1).default(0.55),
+  tau_intent: z.number().min(0).max(1).default(0.5),
   tau_cond: z.number().min(0).max(1).default(0.5),
   /** Minimum retrieval score; 0.0 until tuned on the eval set. */
   tau_ret: z.number().default(0),
+  /**
+   * 4.1 / 4.2: a section whose title is covered by the cleaned query by at least this share is chosen instead of the
+   * vector-search section (minimum share of the title covered, 0..1). 1.01 disables the title match (no score reaches it).
+   */
+  tau_title: z.number().min(0).max(1.01).default(0.6),
   /** Consecutive off-topic turns before route 8.2. */
   off_topic_streak: z.number().int().min(1).default(3),
   /** 4.1 prefers the deepest section among hits scoring within this relative margin of the best hit. */
@@ -46,5 +51,6 @@ export function thresholdsOf(c: RouterConfig): Thresholds {
     intent: c.tau_intent,
     conditions: c.tau_cond,
     retrieval: c.tau_ret,
+    title: c.tau_title,
   };
 }

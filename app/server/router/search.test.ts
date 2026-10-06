@@ -90,6 +90,20 @@ describe('searchIndex', () => {
     expect(r.filters).toMatchObject({ study_ids: 'HIMALAYA' });
   });
 
+  it('searches the section prefix first and falls back to all sections when it has no hit', async () => {
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response([row('c2', 's2', ['HIMALAYA'], 0.8)]));
+    const n = need('HIMALAYA');
+    const r = await searchIndex({ ...n, filters: { ...n.filters, section_prefix: 'Ⅴ.5' } }, config(), post, 'i');
+    const first = JSON.parse((post.mock.calls[0] as [string, Record<string, unknown>])[1].filters_json as string);
+    const second = JSON.parse((post.mock.calls[1] as [string, Record<string, unknown>])[1].filters_json as string);
+    expect(first['section_path LIKE']).toBe('Ⅴ.5');
+    expect(second['section_path LIKE']).toBeUndefined();
+    expect(r.hits.map((h) => h.chunk_id)).toEqual(['c2']);
+  });
+
   it('throws when the index is not configured', async () => {
     await expect(searchIndex(need(), config(), vi.fn(), undefined)).rejects.toThrow(/AI_SEARCH_INDEX/);
   });

@@ -8,9 +8,10 @@ describe('config', () => {
       ae_route: 0.8,
       injection: 0.6,
       has_request: 0.3,
-      intent: 0.55,
+      intent: 0.5,
       conditions: 0.5,
       retrieval: 0,
+      title: 0.6,
     });
     expect(DEFAULT_CONFIG.off_topic_streak).toBe(3);
     expect(DEFAULT_CONFIG.num_results).toBe(8);
@@ -26,6 +27,12 @@ describe('config', () => {
       max_verbatim_chars: 6000,
       require_qa_approved: true,
     });
+  });
+  it('tau_title defaults to 0.6, is overridable and 1.01 switches the title match off', () => {
+    expect(DEFAULT_CONFIG.tau_title).toBe(0.6);
+    expect(loadConfig('{"tau_title":0.8}').tau_title).toBe(0.8);
+    expect(thresholdsOf(loadConfig('{"tau_title":1.01}')).title).toBe(1.01);
+    expect(loadConfig('{"tau_title":1.5}')).toEqual(DEFAULT_CONFIG);
   });
   it('ignores a broken ROUTER_CONFIG', () => {
     expect(loadConfig('{nope')).toEqual(DEFAULT_CONFIG);

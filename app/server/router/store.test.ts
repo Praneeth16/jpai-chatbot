@@ -46,6 +46,69 @@ const ae: AeRow = {
   status: 'UNCLASSIFIED',
 };
 
+describe('store: section titles', () => {
+  const titleRowOf = (section_id: string, product_code: string, over: Row = {}): Row => ({
+    section_id,
+    product_code,
+    section_path: 'Ⅳ.2',
+    title: '貯法',
+    level: 2,
+    parent_section_id: 'p',
+    char_len: '1200',
+    is_current: true,
+    qa_status: 'AUTO',
+    approved_flag: 't',
+    is_pseudo: false,
+    ...over,
+  });
+
+  it('loads current level 2+ rows once, and serves any product list from the cache', async () => {
+    const { db, calls } = fakeDb(() => [
+      titleRowOf('a', 'IMJUDO'),
+      titleRowOf('b', 'IMFINZI', { is_pseudo: 't', char_len: null, parent_section_id: null }),
+      titleRowOf('c', 'IMJUDO'),
+    ]);
+    const store = createStore(db, '"ref"');
+    const both = await store.sectionTitles(['IMJUDO', 'IMFINZI']);
+    expect(both.map((r) => r.section_id)).toEqual(['a', 'c', 'b']);
+    expect(both[2]).toMatchObject({
+      is_pseudo: true,
+      char_len: null,
+      parent_section_id: null,
+      product_code: 'IMFINZI',
+    });
+    expect(both[0]).toMatchObject({ char_len: 1200, approved_flag: true, is_current: true, level: 2, title: '貯法' });
+    expect((await store.sectionTitles(['IMFINZI'])).map((r) => r.section_id)).toEqual(['b']);
+    expect(await store.sectionTitles(['NOPE'])).toEqual([]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].text).toContain('"ref".if_sections');
+    expect(calls[0].text).toContain('is_pseudo');
+    expect(calls[0].text).toMatch(/is_current IS TRUE AND level >= 2/);
+  });
+
+  it('reloads after the 5 minute TTL and does not cache a failure', async () => {
+    vi.useFakeTimers();
+    try {
+      let fail = true;
+      const { db, calls } = fakeDb(() => {
+        if (fail) throw new Error('down');
+        return [titleRowOf('a', 'IMJUDO')];
+      });
+      const store = createStore(db, '"ref"');
+      await expect(store.sectionTitles(['IMJUDO'])).rejects.toThrow('down');
+      fail = false;
+      expect(await store.sectionTitles(['IMJUDO'])).toHaveLength(1);
+      await store.sectionTitles(['IMJUDO']);
+      expect(calls).toHaveLength(2);
+      vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+      await store.sectionTitles(['IMJUDO']);
+      expect(calls).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('store: conversation state is bound to the user', () => {
   it('returns the state to its owner (case-insensitive)', async () => {
     const { db } = fakeDb(() => [stateRow('Dr@Example.com')]);

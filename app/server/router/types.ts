@@ -49,6 +49,8 @@ export interface SearchFilters {
   /** Only set when unapproved sections must be excluded (4.x). Omitted for 5.1 with audience HCP. */
   approved_flag?: true;
   study_id?: string;
+  /** Search this IF chapter first (section_path substring), then everything if it has no hit. */
+  section_prefix?: string;
 }
 
 export interface NeedsSearch {

@@ -216,3 +216,12 @@ Router
 Eval set
 - 52-04 → 5.1 (indication → unique study, v1.1 rule) and 71-05 → 4.2 IMFINZI (IMFINZI is now in the master data).
 - `ae_false_positive` counts only answers on route 1; REVIEW queueing is intended.
+Router, round 2
+- 4.x section choice: table-of-contents match first. `titleScore` = share of the section title's character bigrams
+  (title without brackets, footnote digits and glue words) found in the cleaned query; the best answerable, non-pseudo
+  section scoring ≥ `tau_title` (0.6) is chosen (4.2 then walks up as before), otherwise the vector-search choice.
+  `retrieval.selection` = `title | search`, `retrieval.title_score`.
+- 5.1 prefers hits under IF chapter Ⅴ.5 (臨床成績, JSHP format); other chapters only mention the study.
+- `tau_intent` 0.5 (System One `confidence` runs ~0.05 below the top probability). Below it, a turn without a request
+  is off-topic (8.x), with a request it is 7.1.
+- drug_info that names a trial (a study term, not an indication) is handled as efficacy_safety.

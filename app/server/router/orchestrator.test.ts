@@ -4,6 +4,7 @@ import { cls, config, intent, MASTER, sec, SECTIONS } from './fixtures';
 import { handleTurn, type Deps } from './orchestrator';
 import type { SearchResult } from './search';
 import type { AeRow, SectionRow, Store, TurnLogRow } from './store';
+import type { TitleRow } from './title-match';
 import { type ConversationState, emptyState, type RawClassification } from './types';
 
 interface Mem {
@@ -12,6 +13,8 @@ interface Mem {
   ae: AeRow[];
   files: Record<string, string>;
   unapprovedSubtree: Set<string>;
+  titles: TitleRow[];
+  titleCalls: string[][];
 }
 
 const base: SectionRow = {
@@ -53,6 +56,23 @@ const SECTION_TEXT: Record<string, SectionRow> = {
     markdown: '組成の本文',
     pages: [12],
   },
+  'd::Ⅳ.2': {
+    ...base,
+    section_id: 'd::Ⅳ.2',
+    section_path: 'Ⅳ.2',
+    title: '貯法・有効期間',
+    markdown: '貯法の本文',
+  },
+  'd::Ⅳ.2.(1)': {
+    ...base,
+    section_id: 'd::Ⅳ.2.(1)',
+    section_path: 'Ⅳ.2.(1)',
+    title: '貯法',
+    markdown: '貯法だけ',
+    level: 3,
+    parent_section_id: 'd::Ⅳ.2',
+    parent_level: 2,
+  },
   'd::Ⅳ.1#2': {
     ...base,
     section_id: 'd::Ⅳ.1#2',
@@ -72,6 +92,7 @@ interface Faults {
   getState?: boolean;
   section?: boolean;
   lineage?: boolean;
+  titles?: boolean;
   /** Number of logTurnWithAe calls that fail before one succeeds. */
   aeFailures?: number;
 }
@@ -98,6 +119,12 @@ function memStore(mem: Mem, faults: Faults = {}): Store & { aeCalls: number } {
       ),
     masterData: () => Promise.resolve(MASTER),
     templates: () => Promise.resolve([]),
+    sectionTitles: (products: string[]) => {
+      mem.titleCalls.push(products);
+      return faults.titles
+        ? Promise.reject(new Error('lakebase down'))
+        : Promise.resolve(mem.titles.filter((t) => products.includes(t.product_code)));
+    },
     lineage: () =>
       faults.lineage ? Promise.reject(new Error('lakebase down')) : Promise.resolve(SECTIONS_WITH_PSEUDO),
     section: (id: string) =>
@@ -127,7 +154,20 @@ function memStore(mem: Mem, faults: Faults = {}): Store & { aeCalls: number } {
   return store;
 }
 
-const SECTIONS_WITH_PSEUDO = [...SECTIONS, sec('d::Ⅳ.1#2', 3, 'd::Ⅳ.1')];
+const SECTIONS_WITH_PSEUDO = [
+  ...SECTIONS,
+  sec('d::Ⅳ.1#2', 3, 'd::Ⅳ.1'),
+  sec('d::Ⅳ.2', 2, 'd::Ⅳ'),
+  sec('d::Ⅳ.2.(1)', 3, 'd::Ⅳ.2'),
+];
+
+const titleRow = (section_id: string, title: string, over: Partial<TitleRow> = {}): TitleRow => ({
+  ...sec(section_id, 2, 'd::Ⅳ'),
+  product_code: 'IMJUDO',
+  title,
+  is_pseudo: false,
+  ...over,
+});
 
 let mem: Mem;
 let classify: ReturnType<typeof vi.fn<(i: unknown) => Promise<RawClassification>>>;
@@ -158,6 +198,14 @@ beforeEach(() => {
     ae: [],
     files: { JD0300_IF: 'JD0300_IF_v3.pdf' },
     unapprovedSubtree: new Set(),
+    // 貯法 is Ⅳ.2.(1) under Ⅳ.2; the IMFINZI row must never be used for IMJUDO.
+    titles: [
+      titleRow('d::Ⅳ.1', '製剤の組成'),
+      titleRow('d::Ⅳ.2', '貯法・有効期間'),
+      titleRow('d::Ⅳ.2.(1)', '貯法', { level: 3, parent_section_id: 'd::Ⅳ.2' }),
+      titleRow('x::Ⅳ.9', '貯法', { product_code: 'IMFINZI' }),
+    ],
+    titleCalls: [],
   };
   classify = vi.fn(() => Promise.resolve(cls()));
   search = vi.fn(() => Promise.resolve(hitsFor('d::Ⅳ.1')));
@@ -190,9 +238,10 @@ describe('handleTurn', () => {
       ae_route: 0.8,
       injection: 0.6,
       has_request: 0.3,
-      intent: 0.55,
+      intent: 0.5,
       conditions: 0.5,
       retrieval: 0,
+      title: 0.6,
     });
     expect(r.retrieval?.top_score).toBe(0.8);
     expect(mem.turns).toHaveLength(1);
@@ -201,6 +250,67 @@ describe('handleTurn', () => {
       route_id: '4.2',
       user_email: 'dr@example.com',
       section_ids: ['d::Ⅳ.1'],
+    });
+  });
+
+  describe('title match', () => {
+    it('4.2: the IF item named in the question wins over the vector hit, then walks up', async () => {
+      const r = await turn('イジュドの貯法を教えて');
+      expect(r.route_id).toBe('4.2');
+      expect(r.response.section_ids).toEqual(['d::Ⅳ.2']);
+      expect(r.response.section_text).toBe('貯法の本文');
+      expect(r.retrieval).toMatchObject({ query: 'q', selection: 'title', title_score: 1 });
+      expect(mem.titleCalls).toEqual([['IMJUDO']]);
+      expect(mem.turns[0].retrieval).toMatchObject({ selection: 'title' });
+    });
+
+    it('4.1: the title section is returned as it is', async () => {
+      classify.mockResolvedValue(cls({ has_conditions: 0.9 }));
+      const r = await turn('イジュドの貯法を教えて');
+      expect(r.route_id).toBe('4.1');
+      expect(r.response.section_ids).toEqual(['d::Ⅳ.2.(1)']);
+      expect(r.retrieval).toMatchObject({ selection: 'title', title_score: 1 });
+    });
+
+    it('no title match: the vector choice is unchanged', async () => {
+      const r = await turn('イジュドの用法を教えて');
+      expect(r.response.section_ids).toEqual(['d::Ⅳ.1']);
+      expect(r.retrieval).toMatchObject({ selection: 'search', title_score: null });
+    });
+
+    it('tau_title 1.01 turns it off', async () => {
+      const r = await turn('イジュドの貯法を教えて', {}, deps({ config: config({ tau_title: 1.01 }) }));
+      expect(r.response.section_ids).toEqual(['d::Ⅳ.1']);
+      expect(r.retrieval?.selection).toBe('search');
+    });
+
+    it('title rows that fail to load do not fail the turn: vector choice as before, one warning', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const d = deps({ store: memStore(mem, { titles: true }) });
+      const a = await turn('イジュドの貯法を教えて', {}, d);
+      const b = await turn('イジュドの貯法を教えて', {}, d);
+      for (const r of [a, b]) {
+        expect(r.route_id).toBe('4.2');
+        expect(r.response.section_ids).toEqual(['d::Ⅳ.1']);
+        expect(r.retrieval).toMatchObject({ selection: 'search' });
+      }
+      expect(warn.mock.calls.filter((c) => String(c[0]).includes('title matching skipped')).length).toBeLessThanOrEqual(
+        1
+      );
+      warn.mockRestore();
+    });
+
+    it('is not tried when the search failed, and never for 5.1', async () => {
+      search.mockRejectedValueOnce(new Error('index offline'));
+      const failed = await turn('イジュドの貯法を教えて');
+      expect(failed.route_id).toBe('2');
+      expect(mem.titleCalls).toEqual([]);
+
+      classify.mockResolvedValue(intent('efficacy_safety'));
+      search.mockResolvedValue(hitsFor('d::Ⅴ.5'));
+      const r = await turn('イジュドのHIMALAYA試験の貯法');
+      expect(r.route_id).toBe('5.1');
+      expect(mem.titleCalls).toEqual([]);
     });
   });
 

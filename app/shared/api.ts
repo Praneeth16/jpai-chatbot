@@ -116,6 +116,8 @@ export interface Thresholds {
   intent: number;
   conditions: number;
   retrieval: number;
+  /** Minimum share of a section title the query must cover for 4.x to pick that section (1.01 = off). */
+  title: number;
 }
 
 export interface Classification {
@@ -148,6 +150,10 @@ export interface Retrieval {
   filters: Record<string, unknown>;
   top_score: number | null;
   hits: RetrievalHit[];
+  /** How the section was chosen: 'title' = its title matched the query (tau_title), 'search' = vector search. */
+  selection?: 'title' | 'search';
+  /** Share of the title covered by the query when selection is 'title', else null. */
+  title_score?: number | null;
   /** Set when the search call failed; the turn then falls back to route 2. */
   error?: string;
 }

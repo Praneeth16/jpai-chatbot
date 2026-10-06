@@ -21,6 +21,7 @@ import { type SearchResult, searchIndex } from './search';
 import type { AeRow, SectionRow, Store, TurnLogRow } from './store';
 import { resolveTemplate } from './templates';
 import { noopTracer, type Tracer } from './trace';
+import type { TitleRow } from './title-match';
 import { type ConversationState, type Decision, emptyState, type NeedsSearch, type RawClassification } from './types';
 
 export interface Deps {
@@ -82,6 +83,21 @@ async function refusal(
     return 'section contains unapproved sub-sections';
   }
   return null;
+}
+
+let titleLoadWarned = false;
+
+/** Title rows of the searched products for the 4.x title match, or null when they cannot be loaded (never fails the turn). */
+async function loadTitleRows(store: Store, productCode: string | string[]): Promise<TitleRow[] | null> {
+  try {
+    return await store.sectionTitles(Array.isArray(productCode) ? productCode : [productCode]);
+  } catch (err) {
+    if (!titleLoadWarned) {
+      titleLoadWarned = true;
+      console.warn('[router] section titles unavailable, title matching skipped:', (err as Error).message);
+    }
+    return null;
+  }
 }
 
 async function withRetries(fn: () => Promise<void>, attempts: number, delayMs: number): Promise<boolean> {
@@ -202,23 +218,34 @@ export async function handleTurn(req: RouteRequest, caller: Caller, deps: Deps):
       }
       const sections = new Map(lineage.map((s) => [s.section_id, s]));
 
-      const fin = await trace.span('lookup', { hits: result.hits.length }, async () => {
-        const f = finalize(decision, result.hits, sections, config);
-        if (!f.section_id || failure) return { f, found: null as SectionRow | null };
-        try {
-          const row = await store.section(f.section_id);
-          const why = await refusal(store, row, decision, need, config);
-          if (why) {
-            console.warn(`[router] ${f.section_id} refused: ${why}`);
+      // Only when the search worked, so its error handling is unchanged.
+      const titleRows =
+        !failure && result.hits.length > 0 && (decision.route_id === '4.1' || decision.route_id === '4.2')
+          ? await loadTitleRows(store, need.filters.product_code)
+          : null;
+
+      const fin = await trace.span(
+        'lookup',
+        { hits: result.hits.length, title_rows: titleRows?.length ?? null },
+        async () => {
+          const f = finalize(decision, result.hits, sections, config, titleRows);
+          if (!f.section_id || failure) return { f, found: null as SectionRow | null };
+          try {
+            const row = await store.section(f.section_id);
+            const why = await refusal(store, row, decision, need, config);
+            if (why) {
+              console.warn(`[router] ${f.section_id} refused: ${why}`);
+              return { f, found: null };
+            }
+            return { f, found: row };
+          } catch (err) {
+            failure = `section lookup failed: ${(err as Error).message}`;
+            console.error('[router]', failure);
             return { f, found: null };
           }
-          return { f, found: row };
-        } catch (err) {
-          failure = `section lookup failed: ${(err as Error).message}`;
-          console.error('[router]', failure);
-          return { f, found: null };
-        }
-      });
+        },
+        (r) => ({ selection: r.f.selection, title_score: r.f.title_score, section_id: r.f.section_id })
+      );
 
       section = fin.found;
       if (!section) {
@@ -232,6 +259,8 @@ export async function handleTurn(req: RouteRequest, caller: Caller, deps: Deps):
         filters: result.filters,
         top_score: fin.f.top_score,
         hits: fin.f.section_scores.map((s) => ({ section_id: s.section_id, score: s.score })),
+        selection: fin.f.selection,
+        title_score: fin.f.title_score,
         ...(failure ? { error: failure } : {}),
       };
     }

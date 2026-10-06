@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { RouteId } from '../../shared/api';
 import { config, cls, input, intent, sec, SECTIONS } from './fixtures';
-import { decide, fallbackState, finalize, groupBySection, isFront, type SearchHit } from './flow';
+import { decide, fallbackState, finalize, groupBySection, isClinicalStudyPath, isFront, type SearchHit } from './flow';
+import { titleScore as titleScore4, type TitleRow } from './title-match';
 import { emptyState, type ConversationState } from './types';
 
 const C = config();
@@ -153,8 +154,16 @@ describe('decide: one case per route id', () => {
   });
 
   it('7.1: low intent confidence', () => {
-    expect(route('イジュドの用量', intent('drug_info', 0.54))).toBe('7.1');
-    expect(route('イジュドの用量', intent('drug_info', 0.55))).toBe('4.2');
+    expect(route('イジュドの用量', intent('drug_info', 0.49))).toBe('7.1');
+    expect(route('イジュドの用量', intent('drug_info', 0.5))).toBe('4.2');
+  });
+
+  it('8.1: low intent confidence and no request (keyboard mash) is off-topic, not a product question', () => {
+    expect(route('asdfghjkl', { ...intent('unanswerable', 0.4), has_request: 0.1 })).toBe('8.1');
+  });
+
+  it('5.1: drug_info that names a trial is a study question', () => {
+    expect(route('イジュドのHIMALAYA試験での主な副作用', intent('drug_info', 0.9))).toBe('5.1');
   });
 
   it('7.1: drug_info and efficacy_safety without a product', () => {
@@ -435,6 +444,119 @@ describe('finalize', () => {
   it('5.1 takes the best hit and keeps the study header template', () => {
     const f = finalize(d51, [hit('d::Ⅴ.5', 0.9), hit('d::Ⅴ.3.(2)', 0.88)], sections, C);
     expect(f).toMatchObject({ route_id: '5.1', section_id: 'd::Ⅴ.5', template_id: 'T_5_1_HEADER' });
+  });
+
+  describe('title match (4.x)', () => {
+    const titleRow = (id: string, title: string, over: Partial<TitleRow> = {}): TitleRow => ({
+      ...sec(id, 2, null),
+      product_code: 'IMJUDO',
+      title,
+      is_pseudo: false,
+      ...over,
+    });
+    // The vector hit is Ⅴ.3; the question names the IF item 用法及び用量, which lives under Ⅳ.1.
+    const vector = map([sec('d::Ⅴ.3', 2, 'd::Ⅴ')]);
+    const rows = [
+      titleRow('d::Ⅳ.1', '製剤に関する項目'),
+      titleRow('d::Ⅳ.1.(1)', '用法及び用量', { level: 3, parent_section_id: 'd::Ⅳ.1' }),
+      titleRow('d::Ⅴ.3', '治療上の注意'),
+    ];
+
+    it('4.2 takes the title section instead of the vector choice and walks up from it', () => {
+      const f = finalize(d42, [hit('d::Ⅴ.3', 0.9)], vector, C, rows);
+      expect(f).toMatchObject({ route_id: '4.2', section_id: 'd::Ⅳ.1', selection: 'title', title_score: 1 });
+      expect(f.top_score).toBe(0.9);
+    });
+
+    it('4.2 walk-up stops at the size limit', () => {
+      const big = [rows[0], { ...rows[1], parent_section_id: 'd::Ⅳ.1' }, { ...rows[2] }];
+      big[0] = { ...big[0], char_len: 9000 };
+      expect(finalize(d42, [hit('d::Ⅴ.3', 0.9)], vector, C, big).section_id).toBe('d::Ⅳ.1.(1)');
+    });
+
+    it('4.1 keeps the title section as it is (no walk-up, no depth preference)', () => {
+      const d = run('イジュドの用法及び用量', { ...intent('drug_info'), has_conditions: 0.9 });
+      expect(d.route_id).toBe('4.1');
+      const f = finalize(d, [hit('d::Ⅴ.3', 0.9)], vector, C, rows);
+      expect(f).toMatchObject({ section_id: 'd::Ⅳ.1.(1)', selection: 'title' });
+      expect(f.title_score).toBeCloseTo(2 / 3);
+    });
+
+    it('the title match does not depend on tau_ret or on the hits being answerable', () => {
+      const f = finalize(d42, [hit('d::unknown', 0.01)], vector, config({ tau_ret: 0.9 }), rows);
+      expect(f).toMatchObject({ route_id: '4.2', section_id: 'd::Ⅳ.1', selection: 'title' });
+    });
+
+    it('no hits still falls back to route 2 (search errors are handled as before)', () => {
+      expect(finalize(d42, [], vector, C, rows).route_id).toBe('2');
+    });
+
+    it('no title match: the vector choice is unchanged', () => {
+      const other = [titleRow('d::Ⅳ.1', '製剤に関する項目'), titleRow('d::Ⅴ.3', '治療上の注意')];
+      const f = finalize(d42, [hit('d::Ⅴ.3', 0.9)], vector, C, other);
+      expect(f).toMatchObject({ section_id: 'd::Ⅴ.3', selection: 'search', title_score: null });
+      expect(finalize(d42, [hit('d::Ⅴ.3', 0.9)], vector, C, null)).toEqual(f);
+      expect(finalize(d42, [hit('d::Ⅴ.3', 0.9)], vector, C)).toEqual(f);
+    });
+
+    it('tau_title 1.01 switches the match off; the threshold is inclusive', () => {
+      expect(finalize(d42, [hit('d::Ⅴ.3', 0.9)], vector, config({ tau_title: 1.01 }), rows).selection).toBe('search');
+      const half = [titleRow('d::Ⅳ.1.(1)', '用法用量指示', { level: 3 })];
+      expect(titleScore4('用法用量', half[0].title)).toBeCloseTo(0.6);
+      expect(finalize(d42, [hit('d::Ⅴ.3', 0.9)], vector, config({ tau_title: 0.6 }), half).selection).toBe('title');
+      expect(finalize(d42, [hit('d::Ⅴ.3', 0.9)], vector, config({ tau_title: 0.61 }), half).selection).toBe('search');
+    });
+
+    it('ignores pseudo-sections, unapproved, non-current, REJECTED and level 1 rows', () => {
+      const bad = [
+        titleRow('p', '用法及び用量', { is_pseudo: true }),
+        titleRow('u', '用法及び用量', { approved_flag: false }),
+        titleRow('o', '用法及び用量', { is_current: false }),
+        titleRow('r', '用法及び用量', { qa_status: 'REJECTED' }),
+        titleRow('c', '用法及び用量', { level: 1 }),
+      ];
+      expect(finalize(d42, [hit('d::Ⅴ.3', 0.9)], vector, C, bad).selection).toBe('search');
+    });
+
+    it('5.1 never uses the title match', () => {
+      const f = finalize(d51, [hit('d::Ⅴ.3', 0.9)], vector, C, [titleRow('d::Ⅳ.1', '結果')]);
+      expect(f).toMatchObject({ section_id: 'd::Ⅴ.3', selection: 'search' });
+    });
+  });
+
+  describe('5.1 prefers IF chapter Ⅴ.5', () => {
+    const list = map([
+      sec('d::Ⅰ.2', 2, 'd::Ⅰ'),
+      sec('d::Ⅴ.5.(4)', 3, 'd::Ⅴ.5', { approved_flag: false }),
+      sec('d::Ⅴ.5#2', 3, 'd::Ⅴ.5', { approved_flag: false }),
+      sec('d::Ⅷ.12', 2, 'd::Ⅷ'),
+    ]);
+    it('picks the best Ⅴ.5 hit over a higher scoring Ⅰ.2 hit', () => {
+      const f = finalize(
+        d51,
+        [hit('d::Ⅰ.2', 0.9), hit('d::Ⅴ.5#2', 0.6), hit('d::Ⅴ.5.(4)', 0.7), hit('d::Ⅷ.12', 0.8)],
+        list,
+        C
+      );
+      expect(f).toMatchObject({ route_id: '5.1', section_id: 'd::Ⅴ.5.(4)', selection: 'search' });
+    });
+    it('is unchanged when no hit is in Ⅴ.5', () => {
+      expect(finalize(d51, [hit('d::Ⅰ.2', 0.9), hit('d::Ⅷ.12', 0.8)], list, C).section_id).toBe('d::Ⅰ.2');
+    });
+    it('ignores a Ⅴ.5 hit below tau_ret and one that is not answerable (non-HCP audience)', () => {
+      expect(
+        finalize(d51, [hit('d::Ⅰ.2', 0.9), hit('d::Ⅴ.5.(4)', 0.2)], list, config({ tau_ret: 0.5 })).section_id
+      ).toBe('d::Ⅰ.2');
+      const other = decide(
+        { ...input('イジュド HIMALAYA の結果', intent('efficacy_safety')), audience: 'OTHER' as 'HCP' },
+        C
+      );
+      expect(finalize(other, [hit('d::Ⅰ.2', 0.9), hit('d::Ⅴ.5.(4)', 0.8)], list, C).section_id).toBe('d::Ⅰ.2');
+    });
+    it('isClinicalStudyPath compares after NFKC and respects path boundaries', () => {
+      for (const p of ['Ⅴ.5', 'V.5', 'Ⅴ.5.(4)', 'Ⅴ.5#2', 'V.5.(1)']) expect(isClinicalStudyPath(p)).toBe(true);
+      for (const p of ['Ⅴ.50', 'Ⅴ.4', 'Ⅰ.5', 'Ⅴ', 'Ⅵ.5', 'Ⅷ.5.(1)']) expect(isClinicalStudyPath(p)).toBe(false);
+    });
   });
 });
 

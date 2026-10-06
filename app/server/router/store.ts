@@ -3,6 +3,7 @@ import type { Cell, Db, Queryable } from '../types';
 import type { SectionMeta } from './flow';
 import type { MasterData, ProductRow, StudyRow, SynonymRow } from './masterdata';
 import type { TemplateRow } from './templates';
+import type { TitleRow } from './title-match';
 import { type ConversationState, emptyState } from './types';
 
 /** One if_sections row as the router needs it to answer (and to re-check that it may be answered). */
@@ -66,6 +67,8 @@ export interface Store {
   ): Promise<{ user_message: string; route_id: string }[]>;
   masterData(): Promise<MasterData>;
   templates(): Promise<TemplateRow[]>;
+  /** Current sections of level 2 or deeper of these products, for the title match. Cached like master data. */
+  sectionTitles(productCodes: string[]): Promise<TitleRow[]>;
   lineage(sectionIds: string[]): Promise<SectionMeta[]>;
   section(sectionId: string): Promise<SectionRow | null>;
   /** Titles of the ancestors of a section, outermost first. */
@@ -189,6 +192,35 @@ export function createStore(db: Db, schema: string = refSchema()): Store {
     }));
   });
 
+  // Every current level 2+ section (a few hundred rows per product), grouped by product_code.
+  const loadTitles = cached(async (): Promise<Map<string, TitleRow[]>> => {
+    const { rows } = await db.query(
+      `SELECT section_id, product_code, section_path, title, level, parent_section_id, char_len, is_current,
+              qa_status, approved_flag, is_pseudo
+         FROM ${schema}.if_sections
+        WHERE is_current IS TRUE AND level >= 2
+        ORDER BY product_code, section_path`
+    );
+    const byProduct = new Map<string, TitleRow[]>();
+    for (const r of rows) {
+      const row: TitleRow = {
+        section_id: String(r.section_id),
+        product_code: String(r.product_code ?? ''),
+        section_path: String(r.section_path ?? ''),
+        title: String(r.title ?? ''),
+        level: Number(r.level),
+        parent_section_id: str(r.parent_section_id),
+        char_len: r.char_len == null ? null : Number(r.char_len),
+        is_current: bool(r.is_current),
+        qa_status: str(r.qa_status),
+        approved_flag: bool(r.approved_flag),
+        is_pseudo: bool(r.is_pseudo),
+      };
+      byProduct.set(row.product_code, [...(byProduct.get(row.product_code) ?? []), row]);
+    }
+    return byProduct;
+  });
+
   return {
     async getState(conversationId, lang, userEmail) {
       const { rows } = await db.query(
@@ -247,6 +279,11 @@ export function createStore(db: Db, schema: string = refSchema()): Store {
 
     masterData: loadMasterData,
     templates: loadTemplates,
+
+    async sectionTitles(productCodes) {
+      const byProduct = await loadTitles();
+      return productCodes.flatMap((p) => byProduct.get(p) ?? []);
+    },
 
     async lineage(sectionIds) {
       if (sectionIds.length === 0) return [];
