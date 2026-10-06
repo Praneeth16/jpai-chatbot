@@ -6,20 +6,21 @@ include:
 
 variables:
   prefix:
-    description: Short name used for every resource (lowercase, hyphens). Change it to install a second copy.
+    description: Short name used for app, job and folder names (lowercase, hyphens). A second copy in the same workspace also needs other schema, synced_schema, lakebase_project_id and ai_search_endpoint values (see the portable target).
     default: jpai
   catalog:
-    description: Existing Unity Catalog catalog where the schema is created.
+    description: Existing Unity Catalog catalog where the schema is created (you need CREATE SCHEMA on it).
   schema:
     description: Schema created by this bundle for all tables, volumes and the AI Search index.
     default: jpai_chatbot
   warehouse_id:
-    description: Serverless SQL warehouse used by the app (ops queries) and jobs.
+    description: Serverless SQL warehouse used by the app (ops queries) and jobs. Find it under SQL Warehouses.
   lakebase_project_id:
     description: Lakebase Autoscaling project id created by this bundle.
     default: jpai-chatbot
   lakebase_catalog:
     description: UC catalog that holds the Lakebase synced tables. A standard catalog works (no CREATE CATALOG needed).
+    default: ${var.catalog}
   synced_schema:
     description: Schema (in UC and in Postgres) of the synced tables. Must differ from `schema`.
     default: jpai_chatbot_ref
@@ -40,8 +41,16 @@ variables:
     default: ${workspace.current_user.userName}
 
 targets:
-  dev:
+  # Default target for any workspace. The workspace comes from your CLI profile (--profile), and catalog and
+  # warehouse_id are passed by scripts/install.sh (or with --var). Nothing to edit in this file.
+  az:
     default: true
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
+  # The workspace this was built and evaluated on. Kept as an example of a pinned target.
+  dev:
     workspace:
       host: https://fevm-serverless-lakebase-praneeth.cloud.databricks.com
     variables:
@@ -49,6 +58,7 @@ targets:
       lakebase_catalog: serverless_lakebase_praneeth_catalog
       warehouse_id: 4d39ac2e32b72a3a
 
+  # A second copy in the same workspace (other names everywhere), used to prove a clean install.
   portable:
     workspace:
       host: https://fevm-serverless-lakebase-praneeth.cloud.databricks.com
